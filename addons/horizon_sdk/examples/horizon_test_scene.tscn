@@ -1,0 +1,743 @@
+[gd_scene load_steps=2 format=3 uid="uid://cq8v7h4y6rfao"]
+
+[ext_resource type="Script" uid="uid://cuh15ts7rj7t2" path="res://addons/horizon_sdk/examples/horizon_test_ui.gd" id="1_test_ui"]
+
+[node name="HorizonTestUI" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_test_ui")
+
+[node name="MarginContainer" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="ScrollContainer" type="ScrollContainer" parent="MarginContainer"]
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 15
+
+[node name="Title" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "horizOn SDK Test UI"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+text = "Test all SDK endpoints"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="ConnectionPanel" type="PanelContainer" parent="MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="ConnectionContent" type="VBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/ConnectionPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ConnectionHeader" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/ConnectionPanel/ConnectionContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Connection"
+
+[node name="LblConfigStatus" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/ConnectionPanel/ConnectionContent"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.6, 0.8, 1)
+text = "Config: Loading..."
+
+[node name="ConnectionButtons" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/ConnectionPanel/ConnectionContent"]
+layout_mode = 2
+
+[node name="BtnConnect" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/ConnectionPanel/ConnectionContent/ConnectionButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Connect"
+
+[node name="BtnDisconnect" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/ConnectionPanel/ConnectionContent/ConnectionButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Disconnect"
+
+[node name="LblConnectionStatus" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/ConnectionPanel/ConnectionContent"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.8, 0.5, 1)
+text = "Status: Disconnected"
+
+[node name="AuthPanel" type="PanelContainer" parent="MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="AuthContent" type="VBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="AuthHeader" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Authentication"
+
+[node name="EmailRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent"]
+layout_mode = 2
+
+[node name="EmailLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent/EmailRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.3
+text = "Email:"
+
+[node name="TxtEmail" type="LineEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent/EmailRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "user@example.com"
+
+[node name="PasswordRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent"]
+layout_mode = 2
+
+[node name="PasswordLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent/PasswordRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.3
+text = "Password:"
+
+[node name="TxtPassword" type="LineEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent/PasswordRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "password"
+secret = true
+
+[node name="DisplayNameRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent"]
+layout_mode = 2
+
+[node name="DisplayNameLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent/DisplayNameRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.3
+text = "Display Name:"
+
+[node name="TxtDisplayName" type="LineEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent/DisplayNameRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Player1"
+
+[node name="AnonymousTokenRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent"]
+layout_mode = 2
+
+[node name="AnonymousTokenLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent/AnonymousTokenRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.3
+text = "Anonymous Token:"
+
+[node name="TxtAnonymousToken" type="LineEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent/AnonymousTokenRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "(auto-generated if empty)"
+
+[node name="AuthButtons1" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent"]
+layout_mode = 2
+
+[node name="BtnSignUpEmail" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent/AuthButtons1"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Sign Up Email"
+
+[node name="BtnSignInEmail" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent/AuthButtons1"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Sign In Email"
+
+[node name="BtnSignInAnonymous" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent/AuthButtons1"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Sign In Anonymous"
+
+[node name="AuthButtons2" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent"]
+layout_mode = 2
+
+[node name="BtnCheckAuth" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent/AuthButtons2"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Check Auth"
+
+[node name="BtnChangeName" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent/AuthButtons2"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Change Name"
+
+[node name="BtnSignOut" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent/AuthButtons2"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Sign Out"
+
+[node name="LblAuthStatus" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.8, 0.5, 1)
+text = "Not Signed In"
+
+[node name="TxtAuthResponse" type="TextEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/AuthPanel/AuthContent"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+placeholder_text = "Response will appear here..."
+editable = false
+
+[node name="PasswordResetPanel" type="PanelContainer" parent="MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="PasswordResetContent" type="VBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/PasswordResetPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="PasswordResetHeader" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/PasswordResetPanel/PasswordResetContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Password Reset"
+
+[node name="ForgotEmailRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/PasswordResetPanel/PasswordResetContent"]
+layout_mode = 2
+
+[node name="ForgotEmailLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/PasswordResetPanel/PasswordResetContent/ForgotEmailRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.3
+text = "Email:"
+
+[node name="TxtForgotEmail" type="LineEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/PasswordResetPanel/PasswordResetContent/ForgotEmailRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "user@example.com"
+
+[node name="BtnForgotPassword" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/PasswordResetPanel/PasswordResetContent/ForgotEmailRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Send Reset Email"
+
+[node name="ResetTokenRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/PasswordResetPanel/PasswordResetContent"]
+layout_mode = 2
+
+[node name="ResetTokenLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/PasswordResetPanel/PasswordResetContent/ResetTokenRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.3
+text = "Reset Token:"
+
+[node name="TxtResetToken" type="LineEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/PasswordResetPanel/PasswordResetContent/ResetTokenRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Token from email"
+
+[node name="NewPasswordRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/PasswordResetPanel/PasswordResetContent"]
+layout_mode = 2
+
+[node name="NewPasswordLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/PasswordResetPanel/PasswordResetContent/NewPasswordRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.3
+text = "New Password:"
+
+[node name="TxtNewPassword" type="LineEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/PasswordResetPanel/PasswordResetContent/NewPasswordRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "New password"
+secret = true
+
+[node name="BtnResetPassword" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/PasswordResetPanel/PasswordResetContent/NewPasswordRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Reset Password"
+
+[node name="EmailVerificationPanel" type="PanelContainer" parent="MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="EmailVerificationContent" type="VBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/EmailVerificationPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="EmailVerificationHeader" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/EmailVerificationPanel/EmailVerificationContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Email Verification"
+
+[node name="VerifyTokenRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/EmailVerificationPanel/EmailVerificationContent"]
+layout_mode = 2
+
+[node name="VerifyTokenLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/EmailVerificationPanel/EmailVerificationContent/VerifyTokenRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.3
+text = "Verify Token:"
+
+[node name="TxtVerifyToken" type="LineEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/EmailVerificationPanel/EmailVerificationContent/VerifyTokenRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Token from email"
+
+[node name="BtnVerifyEmail" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/EmailVerificationPanel/EmailVerificationContent/VerifyTokenRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Verify Email"
+
+[node name="RemoteConfigPanel" type="PanelContainer" parent="MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="RemoteConfigContent" type="VBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/RemoteConfigPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="RemoteConfigHeader" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/RemoteConfigPanel/RemoteConfigContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Remote Config"
+
+[node name="ConfigKeyRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/RemoteConfigPanel/RemoteConfigContent"]
+layout_mode = 2
+
+[node name="ConfigKeyLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/RemoteConfigPanel/RemoteConfigContent/ConfigKeyRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.3
+text = "Config Key:"
+
+[node name="TxtConfigKey" type="LineEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/RemoteConfigPanel/RemoteConfigContent/ConfigKeyRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "e.g., game_version"
+
+[node name="ConfigButtons" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/RemoteConfigPanel/RemoteConfigContent"]
+layout_mode = 2
+
+[node name="BtnConfigGet" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/RemoteConfigPanel/RemoteConfigContent/ConfigButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Get Config"
+
+[node name="BtnConfigAll" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/RemoteConfigPanel/RemoteConfigContent/ConfigButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Get All Configs"
+
+[node name="BtnConfigClear" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/RemoteConfigPanel/RemoteConfigContent/ConfigButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Clear Cache"
+
+[node name="TxtConfigResponse" type="TextEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/RemoteConfigPanel/RemoteConfigContent"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
+placeholder_text = "Response will appear here..."
+editable = false
+
+[node name="NewsPanel" type="PanelContainer" parent="MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="NewsContent" type="VBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/NewsPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="NewsHeader" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/NewsPanel/NewsContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "News"
+
+[node name="NewsRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/NewsPanel/NewsContent"]
+layout_mode = 2
+
+[node name="NewsLimitLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/NewsPanel/NewsContent/NewsRow"]
+layout_mode = 2
+text = "Limit:"
+
+[node name="TxtNewsLimit" type="LineEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/NewsPanel/NewsContent/NewsRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "20"
+
+[node name="NewsLangLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/NewsPanel/NewsContent/NewsRow"]
+layout_mode = 2
+text = "Language:"
+
+[node name="TxtNewsLanguage" type="LineEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/NewsPanel/NewsContent/NewsRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+placeholder_text = "en"
+
+[node name="BtnNewsLoad" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/NewsPanel/NewsContent/NewsRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Load News"
+
+[node name="BtnNewsClear" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/NewsPanel/NewsContent/NewsRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Clear Cache"
+
+[node name="TxtNewsResponse" type="TextEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/NewsPanel/NewsContent"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+placeholder_text = "News will appear here..."
+editable = false
+
+[node name="LeaderboardPanel" type="PanelContainer" parent="MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="LeaderboardContent" type="VBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/LeaderboardPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LeaderboardHeader" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/LeaderboardPanel/LeaderboardContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Leaderboard"
+
+[node name="ScoreRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/LeaderboardPanel/LeaderboardContent"]
+layout_mode = 2
+
+[node name="ScoreLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/LeaderboardPanel/LeaderboardContent/ScoreRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.3
+text = "Score:"
+
+[node name="TxtScore" type="LineEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/LeaderboardPanel/LeaderboardContent/ScoreRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "1000"
+
+[node name="BtnLeaderboardSubmit" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/LeaderboardPanel/LeaderboardContent/ScoreRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Submit Score"
+
+[node name="LeaderboardButtons" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/LeaderboardPanel/LeaderboardContent"]
+layout_mode = 2
+
+[node name="BtnLeaderboardTop" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/LeaderboardPanel/LeaderboardContent/LeaderboardButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Get Top 10"
+
+[node name="BtnLeaderboardRank" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/LeaderboardPanel/LeaderboardContent/LeaderboardButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Get My Rank"
+
+[node name="BtnLeaderboardAround" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/LeaderboardPanel/LeaderboardContent/LeaderboardButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Get Around Me"
+
+[node name="TxtLeaderboardResponse" type="TextEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/LeaderboardPanel/LeaderboardContent"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+placeholder_text = "Leaderboard data will appear here..."
+editable = false
+
+[node name="CloudSavePanel" type="PanelContainer" parent="MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="CloudSaveContent" type="VBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/CloudSavePanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="CloudSaveHeader" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/CloudSavePanel/CloudSaveContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Cloud Save"
+
+[node name="ContentTypeRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/CloudSavePanel/CloudSaveContent"]
+layout_mode = 2
+
+[node name="ContentTypeLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/CloudSavePanel/CloudSaveContent/ContentTypeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.3
+text = "Content Type:"
+
+[node name="OptSaveContentType" type="OptionButton" parent="MarginContainer/ScrollContainer/VBoxContainer/CloudSavePanel/CloudSaveContent/ContentTypeRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="SaveDataLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/CloudSavePanel/CloudSaveContent"]
+layout_mode = 2
+text = "Save Data:"
+
+[node name="TxtSaveData" type="TextEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/CloudSavePanel/CloudSaveContent"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+text = "{\"level\": 5, \"coins\": 1000}"
+placeholder_text = "Enter data to save (JSON or text)..."
+
+[node name="CloudSaveButtons" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/CloudSavePanel/CloudSaveContent"]
+layout_mode = 2
+
+[node name="BtnSaveSave" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/CloudSavePanel/CloudSaveContent/CloudSaveButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Save"
+
+[node name="BtnSaveLoad" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/CloudSavePanel/CloudSaveContent/CloudSaveButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Load"
+
+[node name="TxtSaveResponse" type="TextEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/CloudSavePanel/CloudSaveContent"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
+placeholder_text = "Response will appear here..."
+editable = false
+
+[node name="GiftCodePanel" type="PanelContainer" parent="MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="GiftCodeContent" type="VBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/GiftCodePanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="GiftCodeHeader" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/GiftCodePanel/GiftCodeContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Gift Codes"
+
+[node name="GiftCodeRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/GiftCodePanel/GiftCodeContent"]
+layout_mode = 2
+
+[node name="GiftCodeLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/GiftCodePanel/GiftCodeContent/GiftCodeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.3
+text = "Gift Code:"
+
+[node name="TxtGiftCode" type="LineEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/GiftCodePanel/GiftCodeContent/GiftCodeRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "ABCD-1234-EFGH"
+
+[node name="GiftCodeButtons" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/GiftCodePanel/GiftCodeContent"]
+layout_mode = 2
+
+[node name="BtnGiftCodeValidate" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/GiftCodePanel/GiftCodeContent/GiftCodeButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Validate"
+
+[node name="BtnGiftCodeRedeem" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/GiftCodePanel/GiftCodeContent/GiftCodeButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Redeem"
+
+[node name="TxtGiftCodeResponse" type="TextEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/GiftCodePanel/GiftCodeContent"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+placeholder_text = "Response will appear here..."
+editable = false
+
+[node name="FeedbackPanel" type="PanelContainer" parent="MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="FeedbackContent" type="VBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/FeedbackPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="FeedbackHeader" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/FeedbackPanel/FeedbackContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Feedback"
+
+[node name="FeedbackTitleRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/FeedbackPanel/FeedbackContent"]
+layout_mode = 2
+
+[node name="FeedbackTitleLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/FeedbackPanel/FeedbackContent/FeedbackTitleRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.3
+text = "Title:"
+
+[node name="TxtFeedbackTitle" type="LineEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/FeedbackPanel/FeedbackContent/FeedbackTitleRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Feedback title"
+
+[node name="FeedbackCategoryRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/FeedbackPanel/FeedbackContent"]
+layout_mode = 2
+
+[node name="FeedbackCategoryLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/FeedbackPanel/FeedbackContent/FeedbackCategoryRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.3
+text = "Category:"
+
+[node name="OptFeedbackCategory" type="OptionButton" parent="MarginContainer/ScrollContainer/VBoxContainer/FeedbackPanel/FeedbackContent/FeedbackCategoryRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="FeedbackMessageLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/FeedbackPanel/FeedbackContent"]
+layout_mode = 2
+text = "Message:"
+
+[node name="TxtFeedbackMessage" type="TextEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/FeedbackPanel/FeedbackContent"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+placeholder_text = "Your feedback message..."
+
+[node name="FeedbackEmailRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/FeedbackPanel/FeedbackContent"]
+layout_mode = 2
+
+[node name="FeedbackEmailLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/FeedbackPanel/FeedbackContent/FeedbackEmailRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.3
+text = "Email (optional):"
+
+[node name="TxtFeedbackEmail" type="LineEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/FeedbackPanel/FeedbackContent/FeedbackEmailRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "contact@example.com"
+
+[node name="BtnFeedbackSubmit" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/FeedbackPanel/FeedbackContent/FeedbackEmailRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Submit Feedback"
+
+[node name="TxtFeedbackResponse" type="TextEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/FeedbackPanel/FeedbackContent"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+placeholder_text = "Response will appear here..."
+editable = false
+
+[node name="UserLogPanel" type="PanelContainer" parent="MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="UserLogContent" type="VBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/UserLogPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="UserLogHeader" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/UserLogPanel/UserLogContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "User Logs"
+
+[node name="UserLogMessageRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/UserLogPanel/UserLogContent"]
+layout_mode = 2
+
+[node name="UserLogMessageLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/UserLogPanel/UserLogContent/UserLogMessageRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.3
+text = "Message:"
+
+[node name="TxtUserLogMessage" type="LineEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/UserLogPanel/UserLogContent/UserLogMessageRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Log message"
+
+[node name="UserLogTypeRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/UserLogPanel/UserLogContent"]
+layout_mode = 2
+
+[node name="UserLogTypeLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/UserLogPanel/UserLogContent/UserLogTypeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.3
+text = "Type:"
+
+[node name="OptUserLogType" type="OptionButton" parent="MarginContainer/ScrollContainer/VBoxContainer/UserLogPanel/UserLogContent/UserLogTypeRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="UserLogErrorCodeRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/UserLogPanel/UserLogContent"]
+layout_mode = 2
+
+[node name="UserLogErrorCodeLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/UserLogPanel/UserLogContent/UserLogErrorCodeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.3
+text = "Error Code (optional):"
+
+[node name="TxtUserLogErrorCode" type="LineEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/UserLogPanel/UserLogContent/UserLogErrorCodeRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "ERR_001"
+
+[node name="BtnUserLogCreate" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/UserLogPanel/UserLogContent/UserLogErrorCodeRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Create Log"
+
+[node name="TxtUserLogResponse" type="TextEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/UserLogPanel/UserLogContent"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+placeholder_text = "Response will appear here..."
+editable = false
+
+[node name="Footer" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 1)
+text = "horizOn SDK v1.0.0 - ProjectMakers"
+horizontal_alignment = 1

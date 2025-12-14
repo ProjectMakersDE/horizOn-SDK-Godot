@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="HorizonConfig" load_steps=2 format=3 uid="uid://ctagwfnovfogv"]
+
+[ext_resource type="Script" uid="uid://b60bytgk6l2mq" path="res://addons/horizon_sdk/core/horizon_config.gd" id="1_fk8n6"]
+
+[resource]
+script = ExtResource("1_fk8n6")
+api_key = "horizon_IKIf2FcSbg9va1iUQFbUcZesX7ezTVWD"
+hosts = PackedStringArray("http://localhost:4112", "http://localhost:4113", "http://localhost:4114")
