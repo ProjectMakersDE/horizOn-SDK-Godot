@@ -2,7 +2,7 @@
 
 [![Godot 4.5+](https://img.shields.io/badge/Godot-4.5%2B-blue?logo=godot-engine&logoColor=white)](https://godotengine.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-orange)](https://github.com/projectmakers/horizon-godot-sdk/releases)
+[![Version](https://img.shields.io/badge/version-1.0.0-orange)](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/releases)
 
 Official Godot SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https://projectmakers.de).
 
@@ -35,7 +35,7 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https
 
 ### Option 2: Manual Installation
 
-1. Download the latest release from [Releases](https://github.com/projectmakers/horizon-godot-sdk/releases)
+1. Download the latest release from [Releases](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/releases)
 2. Copy the `addons/horizon_sdk` folder to your project's `addons` directory
 3. Enable the plugin in **Project > Project Settings > Plugins**
 
@@ -239,8 +239,8 @@ res://addons/horizon_sdk/examples/horizon_test_scene.tscn
 ## Support
 
 - 📖 **Documentation**: [docs.horizon.pm](https://docs.horizon.pm)
-- 💬 **Discord**: [discord.gg/projectmakers](https://discord.gg/projectmakers)
-- 🐛 **Issues**: [GitHub Issues](https://github.com/projectmakers/horizon-godot-sdk/issues)
+- 💬 **Discord**: [discord.gg/horizOn](https://discord.gg/JFmaXtguku)
+- 🐛 **Issues**: [GitHub Issues](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/issues)
 
 ## License
 
