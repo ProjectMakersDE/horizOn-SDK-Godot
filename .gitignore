@@ -14,4 +14,18 @@ export_presets.cfg
 data_*/
 mono_crash.*.json
 
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# Build artifacts
+*.zip
+
+# Claude
 .claude/
