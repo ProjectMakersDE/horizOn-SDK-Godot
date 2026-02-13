@@ -1,3 +1,9 @@
+<p align="center">
+  <a href="https://horizon.pm">
+    <img src="https://horizon.pm/media/images/og-image.png" alt="horizOn - Game Backend & Live-Ops Dashboard" />
+  </a>
+</p>
+
 # horizOn SDK for Godot
 
 [![Godot 4.5+](https://img.shields.io/badge/Godot-4.5%2B-blue?logo=godot-engine&logoColor=white)](https://godotengine.org/)
@@ -40,6 +46,8 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https
 3. Enable the plugin in **Project > Project Settings > Plugins**
 
 ## Quick Start
+
+> **[Quickstart Guide on horizon.pm](https://horizon.pm/quickstart#godot)** - Interactive setup guide with step-by-step instructions.
 
 ### 1. Import Configuration
 
