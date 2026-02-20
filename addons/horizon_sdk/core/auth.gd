@@ -113,22 +113,25 @@ func signUpEmail(email: String, password: String, username: String = "") -> bool
 
 ## Sign up with Google authentication.
 ## @param google_authorization_code Google OAuth authorization code
-## @param google_redirect_uri The redirect URI used for OAuth
+## @param google_redirect_uri The redirect URI used for OAuth (must match the one used to obtain the code)
 ## @param username Optional display name
 ## @return True if signup succeeded
-func signUpGoogle(google_authorization_code: String, google_redirect_uri: String = "", username: String = "") -> bool:
+func signUpGoogle(google_authorization_code: String, google_redirect_uri: String, username: String = "") -> bool:
 	if google_authorization_code.is_empty():
 		_logger.error("Google authorization code is required")
 		signup_failed.emit("Google authorization code is required")
 		return false
 
+	if google_redirect_uri.is_empty():
+		_logger.error("Google redirect URI is required")
+		signup_failed.emit("Google redirect URI is required")
+		return false
+
 	var request := {
 		"type": "GOOGLE",
-		"googleAuthorizationCode": google_authorization_code
+		"googleAuthorizationCode": google_authorization_code,
+		"googleRedirectUri": google_redirect_uri
 	}
-
-	if not google_redirect_uri.is_empty():
-		request["googleRedirectUri"] = google_redirect_uri
 
 	if not username.is_empty():
 		request["username"] = username
@@ -201,21 +204,24 @@ func signInAnonymous(anonymous_token: String) -> bool:
 
 ## Sign in with Google authentication.
 ## @param google_authorization_code Google OAuth authorization code
-## @param google_redirect_uri The redirect URI used for OAuth
+## @param google_redirect_uri The redirect URI used for OAuth (must match the one used to obtain the code)
 ## @return True if signin succeeded
-func signInGoogle(google_authorization_code: String, google_redirect_uri: String = "") -> bool:
+func signInGoogle(google_authorization_code: String, google_redirect_uri: String) -> bool:
 	if google_authorization_code.is_empty():
 		_logger.error("Google authorization code is required")
 		signin_failed.emit("Google authorization code is required")
 		return false
 
+	if google_redirect_uri.is_empty():
+		_logger.error("Google redirect URI is required")
+		signin_failed.emit("Google redirect URI is required")
+		return false
+
 	var request := {
 		"type": "GOOGLE",
-		"googleAuthorizationCode": google_authorization_code
+		"googleAuthorizationCode": google_authorization_code,
+		"googleRedirectUri": google_redirect_uri
 	}
-
-	if not google_redirect_uri.is_empty():
-		request["googleRedirectUri"] = google_redirect_uri
 
 	return await _signIn(request)
 
