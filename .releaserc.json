@@ -5,10 +5,10 @@
     "@semantic-release/release-notes-generator",
     ["@semantic-release/changelog", { "changelogFile": "CHANGELOG.md" }],
     ["@semantic-release/exec", {
-      "prepareCmd": "sed -i 's/version=\"[^\"]*\"/version=\"${nextRelease.version}\"/' addons/horizon_sdk/plugin.cfg"
+      "prepareCmd": "sed -i 's/version=\"[^\"]*\"/version=\"${nextRelease.version}\"/' addons/horizon_sdk/plugin.cfg && sed -i 's/const VERSION := \"[^\"]*\"/const VERSION := \"${nextRelease.version}\"/' addons/horizon_sdk/horizon_sdk.gd && sed -i 's/version-[0-9]*\\.[0-9]*\\.[0-9]*-orange/version-${nextRelease.version}-orange/' README.md"
     }],
     ["@semantic-release/git", {
-      "assets": ["CHANGELOG.md", "addons/horizon_sdk/plugin.cfg"],
+      "assets": ["CHANGELOG.md", "addons/horizon_sdk/plugin.cfg", "addons/horizon_sdk/horizon_sdk.gd", "README.md"],
       "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
     }],
     "@semantic-release/github"

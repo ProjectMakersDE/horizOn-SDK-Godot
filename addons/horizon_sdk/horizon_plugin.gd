@@ -86,8 +86,12 @@ func _on_config_file_selected(path: String) -> void:
 		_show_error("Config file missing 'apiKey' field")
 		return
 
-	if not data.has("backendDomains") or not data.backendDomains is Array or data.backendDomains.is_empty():
-		_show_error("Config file missing 'backendDomains' array")
+	# Accept both "backendUrl" (string) and "backendDomains" (array)
+	var has_backend_url: bool = data.has("backendUrl") and data.backendUrl is String and not data.backendUrl.is_empty()
+	var has_backend_domains: bool = data.has("backendDomains") and data.backendDomains is Array and not data.backendDomains.is_empty()
+
+	if not has_backend_url and not has_backend_domains:
+		_show_error("Config file missing 'backendUrl' or 'backendDomains'")
 		return
 
 	# Create config resource

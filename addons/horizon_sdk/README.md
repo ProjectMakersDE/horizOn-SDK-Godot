@@ -33,6 +33,14 @@ The config JSON should have this format:
 ```json
 {
     "apiKey": "your-api-key-here",
+    "backendUrl": "https://horizon.pm"
+}
+```
+
+If you need multi-region host selection (SDK pings all hosts and picks the fastest), use `backendDomains` instead:
+```json
+{
+    "apiKey": "your-api-key-here",
     "backendDomains": [
         "https://eu.horizon.pm",
         "https://us.horizon.pm",

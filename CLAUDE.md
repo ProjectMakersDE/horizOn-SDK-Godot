@@ -44,7 +44,7 @@ addons/horizon_sdk/
 
 ### API Endpoints
 
-All API calls go to `/api/v1/app/*` endpoints. The SDK pings `/actuator/health` on all configured hosts and connects to the lowest-latency one.
+All API calls go to `/api/v1/app/*` endpoints. With a single host, the SDK performs a health check on `/actuator/health` and connects directly. With multiple hosts, the SDK pings all hosts and connects to the lowest-latency one.
 
 ## Running the Project
 
@@ -61,9 +61,10 @@ The SDK requires a config JSON from the horizOn dashboard with:
 ```json
 {
     "apiKey": "your-api-key",
-    "backendDomains": ["https://eu.horizon.pm", "https://us.horizon.pm"]
+    "backendUrl": "https://horizon.pm"
 }
 ```
+Both `backendUrl` (single string) and `backendDomains` (array) are accepted. With a single host, the SDK skips ping-based selection and performs only a health check. With multiple hosts, latency-based selection is used.
 
 Import via: **Project > Tools > horizOn: Import Config...**
 

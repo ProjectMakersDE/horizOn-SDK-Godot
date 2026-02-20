@@ -5,4 +5,4 @@
 [resource]
 script = ExtResource("1_fk8n6")
 api_key = "horizon_IKIf2FcSbg9va1iUQFbUcZesX7ezTVWD"
-hosts = PackedStringArray("http://localhost:4112", "http://localhost:4113", "http://localhost:4114")
+hosts = PackedStringArray("https://horizon.pm")

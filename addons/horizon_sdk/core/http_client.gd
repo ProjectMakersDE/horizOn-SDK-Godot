@@ -58,7 +58,8 @@ func isConnected() -> bool:
 
 
 ## Connect to the best available host.
-## Pings all configured hosts and selects the one with lowest latency.
+## With a single host, connects directly with a health check (no ping round-trip).
+## With multiple hosts, pings all and selects the one with lowest latency.
 ## @return True if connection succeeded
 func connect_to_server() -> bool:
 	if hosts.is_empty():
@@ -75,7 +76,23 @@ func connect_to_server() -> bool:
 	_logger.info("Starting connection to horizOn servers...")
 	request_started.emit("", "PING")
 
-	# Ping all hosts
+	# Single host: skip ping, just do a health check
+	if hosts.size() == 1:
+		var host: String = hosts[0]
+		_logger.info("Single host configured, checking health...")
+		var healthOk := await _checkHealth(host)
+		if not healthOk:
+			_logger.error("Host %s health check failed" % host)
+			_status = ConnectionStatus.FAILED
+			return false
+
+		activeHost = host
+		_status = ConnectionStatus.CONNECTED
+		_logger.info("Connected to %s (single host)" % activeHost)
+		host_selected.emit(activeHost, 0.0)
+		return true
+
+	# Multiple hosts: ping all and select the best one
 	await _pingAllHosts()
 
 	# Select best host
@@ -169,6 +186,34 @@ func _pingHost(host: String) -> float:
 			return float(Time.get_ticks_msec() - startTime)
 
 	return -1.0
+
+
+## Check if a host is healthy (single request, no timing).
+## @param host The host URL to check
+## @return True if the host reports healthy
+func _checkHealth(host: String) -> bool:
+	var healthUrl := host + "/actuator/health"
+	var http := HTTPRequest.new()
+	add_child(http)
+	http.timeout = connectionTimeoutSeconds
+
+	var error := http.request(healthUrl, [], HTTPClient.METHOD_GET)
+	if error != OK:
+		http.queue_free()
+		return false
+
+	var result: Array = await http.request_completed
+	http.queue_free()
+
+	var response_code: int = result[1]
+	var body: PackedByteArray = result[3]
+
+	if response_code == 200:
+		var bodyText := body.get_string_from_utf8()
+		if bodyText.contains('"status":"UP"'):
+			return true
+
+	return false
 
 
 ## Set the session token for authenticated requests.

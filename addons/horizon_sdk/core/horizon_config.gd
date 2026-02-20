@@ -14,7 +14,7 @@ const RESOURCE_PATH := "res://addons/horizon_sdk/horizon_config.tres"
 ## API Configuration
 @export_group("API Configuration")
 @export var api_key: String = ""
-@export var hosts: PackedStringArray = PackedStringArray()
+@export var hosts: PackedStringArray = PackedStringArray(["https://horizon.pm"])
 
 ## Environment Settings
 @export_group("Environment")
@@ -77,8 +77,13 @@ static func from_json(json_data: Dictionary) -> HorizonConfig:
 
 	config.api_key = json_data.get("apiKey", "")
 
+	# Support both "backendUrl" (single string) and "backendDomains" (array)
+	var backend_url = json_data.get("backendUrl", "")
 	var domains = json_data.get("backendDomains", [])
-	if domains is Array:
+
+	if backend_url is String and not backend_url.is_empty():
+		config.hosts = PackedStringArray([backend_url])
+	elif domains is Array and not domains.is_empty():
 		config.hosts = PackedStringArray(domains)
 
 	return config

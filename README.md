@@ -8,7 +8,7 @@
 
 [![Godot 4.5+](https://img.shields.io/badge/Godot-4.5%2B-blue?logo=godot-engine&logoColor=white)](https://godotengine.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-orange)](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/releases)
+[![Version](https://img.shields.io/badge/version-1.1.0-orange)](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/releases)
 
 Official Godot SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https://projectmakers.de).
 
@@ -230,7 +230,7 @@ Edit your config resource at `addons/horizon_sdk/horizon_config.tres`:
 | Option | Default | Description |
 |--------|---------|-------------|
 | `api_key` | - | Your horizOn API key |
-| `hosts` | - | Array of backend server URLs |
+| `hosts` | `["https://horizon.pm"]` | Backend server URL(s). Single host skips ping; multiple hosts use latency-based selection. |
 | `connection_timeout_seconds` | 10 | HTTP request timeout |
 | `max_retry_attempts` | 3 | Retry count for failed requests |
 | `retry_delay_seconds` | 1.0 | Delay between retries |
