@@ -314,6 +314,70 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "Verify Email"
 
+[node name="GoogleAuthPanel" type="PanelContainer" parent="MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="GoogleAuthContent" type="VBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/GoogleAuthPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="GoogleAuthHeader" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/GoogleAuthPanel/GoogleAuthContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Google Authentication"
+
+[node name="GoogleAuthCodeRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/GoogleAuthPanel/GoogleAuthContent"]
+layout_mode = 2
+
+[node name="GoogleAuthCodeLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/GoogleAuthPanel/GoogleAuthContent/GoogleAuthCodeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.3
+text = "Auth Code:"
+
+[node name="TxtGoogleAuthCode" type="LineEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/GoogleAuthPanel/GoogleAuthContent/GoogleAuthCodeRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Google OAuth authorization code"
+
+[node name="GoogleRedirectUriRow" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/GoogleAuthPanel/GoogleAuthContent"]
+layout_mode = 2
+
+[node name="GoogleRedirectUriLabel" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer/GoogleAuthPanel/GoogleAuthContent/GoogleRedirectUriRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 0.3
+text = "Redirect URI:"
+
+[node name="TxtGoogleRedirectUri" type="LineEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/GoogleAuthPanel/GoogleAuthContent/GoogleRedirectUriRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "http://localhost:8080/callback"
+
+[node name="GoogleAuthButtons" type="HBoxContainer" parent="MarginContainer/ScrollContainer/VBoxContainer/GoogleAuthPanel/GoogleAuthContent"]
+layout_mode = 2
+
+[node name="BtnGoogleSignUp" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/GoogleAuthPanel/GoogleAuthContent/GoogleAuthButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Sign Up Google"
+
+[node name="BtnGoogleSignIn" type="Button" parent="MarginContainer/ScrollContainer/VBoxContainer/GoogleAuthPanel/GoogleAuthContent/GoogleAuthButtons"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Sign In Google"
+
+[node name="TxtGoogleAuthResponse" type="TextEdit" parent="MarginContainer/ScrollContainer/VBoxContainer/GoogleAuthPanel/GoogleAuthContent"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
+placeholder_text = "Google auth response will appear here..."
+editable = false
+
 [node name="RemoteConfigPanel" type="PanelContainer" parent="MarginContainer/ScrollContainer/VBoxContainer"]
 layout_mode = 2
 
@@ -739,5 +803,5 @@ editable = false
 [node name="Footer" type="Label" parent="MarginContainer/ScrollContainer/VBoxContainer"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 1)
-text = "horizOn SDK v1.0.0 - ProjectMakers"
+text = "horizOn SDK - ProjectMakers"
 horizontal_alignment = 1

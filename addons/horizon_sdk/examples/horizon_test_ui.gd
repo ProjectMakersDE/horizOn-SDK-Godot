@@ -32,6 +32,13 @@ extends Control
 @onready var _lblAuthStatus: Label = %LblAuthStatus
 @onready var _txtAuthResponse: TextEdit = %TxtAuthResponse
 
+# Google Auth Panel
+@onready var _txtGoogleAuthCode: LineEdit = %TxtGoogleAuthCode
+@onready var _txtGoogleRedirectUri: LineEdit = %TxtGoogleRedirectUri
+@onready var _btnGoogleSignUp: Button = %BtnGoogleSignUp
+@onready var _btnGoogleSignIn: Button = %BtnGoogleSignIn
+@onready var _txtGoogleAuthResponse: TextEdit = %TxtGoogleAuthResponse
+
 # Password Reset Panel
 @onready var _txtForgotEmail: LineEdit = %TxtForgotEmail
 @onready var _btnForgotPassword: Button = %BtnForgotPassword
@@ -135,6 +142,10 @@ func _connectSignals() -> void:
 	_btnSignOut.pressed.connect(_onSignOutClicked)
 	_btnCheckAuth.pressed.connect(_onCheckAuthClicked)
 	_btnChangeName.pressed.connect(_onChangeNameClicked)
+
+	# Google Auth
+	_btnGoogleSignUp.pressed.connect(_onGoogleSignUpClicked)
+	_btnGoogleSignIn.pressed.connect(_onGoogleSignInClicked)
 
 	# Password Reset
 	_btnForgotPassword.pressed.connect(_onForgotPasswordClicked)
@@ -247,6 +258,8 @@ func _updateUIState() -> void:
 	_btnSignOut.disabled = not isSignedIn
 	_btnCheckAuth.disabled = not isSignedIn
 	_btnChangeName.disabled = not isSignedIn
+	_btnGoogleSignUp.disabled = not isConnected or isSignedIn
+	_btnGoogleSignIn.disabled = not isConnected or isSignedIn
 
 	var requiresAuth: bool = isConnected and isSignedIn
 	_btnLeaderboardSubmit.disabled = not requiresAuth
@@ -419,6 +432,53 @@ func _onChangeNameClicked() -> void:
 		_txtAuthResponse.text = "Display name changed successfully!"
 	else:
 		_txtAuthResponse.text = "Failed to change display name"
+	_updateUIState()
+
+
+# ===== GOOGLE AUTH HANDLERS =====
+
+func _onGoogleSignUpClicked() -> void:
+	var authCode = _txtGoogleAuthCode.text.strip_edges()
+	var redirectUri = _txtGoogleRedirectUri.text.strip_edges()
+	var displayName = _txtDisplayName.text.strip_edges()
+
+	if authCode.is_empty():
+		_txtGoogleAuthResponse.text = "Error: Google authorization code is required"
+		return
+
+	if redirectUri.is_empty():
+		_txtGoogleAuthResponse.text = "Error: Redirect URI is required"
+		return
+
+	_txtGoogleAuthResponse.text = "Signing up with Google..."
+	var success: bool = await _horizon.auth.signUpGoogle(authCode, redirectUri, displayName)
+
+	if success:
+		_txtGoogleAuthResponse.text = "Google sign up successful!"
+	else:
+		_txtGoogleAuthResponse.text = "Google sign up failed. Check console for details."
+	_updateUIState()
+
+
+func _onGoogleSignInClicked() -> void:
+	var authCode = _txtGoogleAuthCode.text.strip_edges()
+	var redirectUri = _txtGoogleRedirectUri.text.strip_edges()
+
+	if authCode.is_empty():
+		_txtGoogleAuthResponse.text = "Error: Google authorization code is required"
+		return
+
+	if redirectUri.is_empty():
+		_txtGoogleAuthResponse.text = "Error: Redirect URI is required"
+		return
+
+	_txtGoogleAuthResponse.text = "Signing in with Google..."
+	var success: bool = await _horizon.auth.signInGoogle(authCode, redirectUri)
+
+	if success:
+		_txtGoogleAuthResponse.text = "Google sign in successful!"
+	else:
+		_txtGoogleAuthResponse.text = "Google sign in failed. Check console for details."
 	_updateUIState()
 
 
