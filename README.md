@@ -8,7 +8,7 @@
 
 [![Godot 4.5+](https://img.shields.io/badge/Godot-4.5%2B-blue?logo=godot-engine&logoColor=white)](https://godotengine.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.1.0-orange)](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/releases)
+[![Version](https://img.shields.io/badge/version-1.2.0-orange)](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/releases)
 
 Official Godot SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https://projectmakers.de).
 
