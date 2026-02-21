@@ -77,3 +77,12 @@ Config is saved to: `addons/horizon_sdk/horizon_config.tres`
 - Private members prefixed with `_`
 - All async methods return `bool` for success/failure and emit signals
 - Error messages come from `HorizonErrorCodes` utility class
+
+## Git Commits & Pull Requests
+
+**CRITICAL: No AI attribution in commits or pull requests.**
+
+- NEVER add `Co-Authored-By` lines mentioning Claude, Anthropic, or any AI
+- NEVER include "Claude", "Claude Code", "AI-generated", "AI-assisted", or similar in commit messages
+- NEVER reference AI tools in pull request titles or descriptions
+- Commit messages must be clean, professional, and written as if authored by a human developer
