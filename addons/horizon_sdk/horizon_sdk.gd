@@ -50,6 +50,7 @@ var news: HorizonNews
 var giftCodes: HorizonGiftCodes
 var feedback: HorizonFeedback
 var userLogs: HorizonUserLogs
+var crashes: HorizonCrashes
 
 ## State
 var _isInitialized: bool = false
@@ -162,6 +163,10 @@ func _initializeManagers() -> void:
 	# User Logs
 	userLogs = HorizonUserLogs.new()
 	userLogs.initialize(_http, _logger, auth)
+
+	# Crash Reporting
+	crashes = HorizonCrashes.new()
+	crashes.initialize(_http, _logger, auth)
 
 	_logger.info("All managers initialized")
 
