@@ -24,6 +24,7 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https
 | 🎁 **Gift Codes** | Validate and redeem promotional codes |
 | 💬 **Feedback** | Submit bug reports and feature requests |
 | 📊 **User Logs** | Server-side player event tracking |
+| 💥 **Crash Reporting** | Automatic crash capture, exception tracking, breadcrumbs |
 
 ## Requirements
 
@@ -201,6 +202,58 @@ await Horizon.userLogs.error("Failed to load asset", "ERR_001")
 await Horizon.userLogs.logEvent("level_complete", "Level 5")
 ```
 
+### Crash Reporting
+
+Track crashes, non-fatal exceptions, and breadcrumbs to monitor game stability.
+
+```gdscript
+# Register crash session (call once on game start)
+await Horizon.crashes.register_session()
+
+# Record breadcrumbs for context leading up to issues
+Horizon.crashes.record_breadcrumb("navigation", "Entered level 5")
+Horizon.crashes.record_breadcrumb("user_action", "Opened inventory")
+Horizon.crashes.log("Player picked up item")
+
+# Set custom metadata included in all reports
+Horizon.crashes.set_custom_key("level", "5")
+Horizon.crashes.set_custom_key("build", "1.2.3")
+
+# Override user ID (defaults to authenticated user)
+Horizon.crashes.set_user_id(user_id)
+
+# Report a fatal crash
+await Horizon.crashes.report_crash("Unexpected null reference", stack_trace)
+
+# Record a non-fatal exception with optional extra keys
+await Horizon.crashes.record_exception(
+    "Failed to load texture",
+    stack_trace,
+    {"texture_name": "player_sprite.png"}
+)
+```
+
+#### Breadcrumb Types
+
+Use built-in constants for consistent breadcrumb categorization:
+
+| Constant | Value | Use Case |
+|----------|-------|----------|
+| `BREADCRUMB_NAVIGATION` | `"navigation"` | Scene/screen transitions |
+| `BREADCRUMB_USER_ACTION` | `"user_action"` | Button presses, interactions |
+| `BREADCRUMB_LOG` | `"log"` | General log messages |
+| `BREADCRUMB_ERROR` | `"error"` | Error conditions |
+| `BREADCRUMB_STATE` | `"state"` | Game state changes |
+
+#### Limits
+
+| Parameter | Limit |
+|-----------|-------|
+| Reports per minute | 5 |
+| Reports per session | 20 |
+| Breadcrumbs (ring buffer) | 50 |
+| Custom keys | 10 |
+
 ## Signals
 
 All operations emit signals for event-driven programming:
@@ -221,6 +274,11 @@ Horizon.leaderboard.score_submitted.connect(func(score): print("Score: %d" % sco
 # Cloud Save
 Horizon.cloudSave.data_saved.connect(func(size): print("Saved %d bytes" % size))
 Horizon.cloudSave.data_loaded.connect(func(data): print("Loaded"))
+
+# Crash Reporting
+Horizon.crashes.crash_reported.connect(func(fingerprint): print("Crash reported: %s" % fingerprint))
+Horizon.crashes.crash_report_failed.connect(func(error): print("Report failed: %s" % error))
+Horizon.crashes.session_registered.connect(func(session_id): print("Session: %s" % session_id))
 ```
 
 ## Configuration Options
@@ -236,13 +294,58 @@ Edit your config resource at `addons/horizon_sdk/horizon_config.tres`:
 | `retry_delay_seconds` | 1.0 | Delay between retries |
 | `log_level` | INFO | DEBUG, INFO, WARNING, ERROR, NONE |
 
-## Example Project
+## Rate Limiting
 
-The SDK includes a test scene demonstrating all features:
+**Limit**: 10 requests per minute per client.
 
+| Do | Don't |
+|----|-------|
+| Load all configs at startup | Fetch configs repeatedly |
+| Cache leaderboard data | Refresh every frame |
+| Save on level complete | Save on every action |
+| Submit scores on improvement | Submit every score |
+| Register one crash session per launch | Register sessions repeatedly |
+
+### Efficient Startup Pattern
+
+```gdscript
+func _ready():
+    var connected = await Horizon.connect_to_server()
+    if not connected:
+        return
+
+    await Horizon.quickSignInAnonymous("Player1")
+
+    # Startup loads (3 requests)
+    await Horizon.remoteConfig.getAllConfigs()
+    await Horizon.news.loadNews()
+    await Horizon.crashes.register_session()
+
+    # 7 requests remaining for gameplay
 ```
-res://addons/horizon_sdk/examples/horizon_test_scene.tscn
+
+## Error Handling
+
+```gdscript
+# Check return values
+var success = await Horizon.auth.signInEmail(email, password)
+if not success:
+    print("Sign-in failed")
+
+# Cloud save with fallback
+var data = await Horizon.cloudSave.loadObject()
+if data.is_empty():
+    data = {"level": 1, "coins": 0}
 ```
+
+### Common HTTP Status Codes
+
+| Code | Meaning | Action |
+|------|---------|--------|
+| 400 | Bad Request | Check parameters |
+| 401 | Unauthorized | Re-authenticate |
+| 403 | Forbidden | Check tier/permissions |
+| 429 | Rate Limited | Wait and retry |
 
 ## Self-Hosted Option
 
@@ -258,6 +361,32 @@ hosts = ["https://your-server.example.com"]
 ```
 
 > **Note:** Simple Server is a starting point, not a full replacement. For the complete experience with dashboard, user authentication, multi-region deployment, and more, use [horizOn BaaS](https://horizon.pm).
+
+## Project Structure
+
+```
+addons/horizon_sdk/
+├── core/
+│   ├── horizon.gd          # Main SDK singleton
+│   ├── auth.gd             # Authentication
+│   ├── leaderboard.gd      # Leaderboards
+│   ├── cloud_save.gd       # Cloud saves
+│   ├── remote_config.gd    # Remote config
+│   ├── news.gd             # News
+│   ├── gift_codes.gd       # Gift codes
+│   ├── feedback.gd         # Feedback
+│   ├── user_logs.gd        # User logs
+│   └── crashes.gd          # Crash reporting
+├── examples/
+│   └── horizon_test_scene.tscn
+└── horizon_config.tres      # Configuration resource
+```
+
+## Documentation
+
+- **[Quickstart Guide](https://horizon.pm/quickstart#godot)** - Interactive setup
+- **[API Reference](https://horizon.pm/docs)** - Full API documentation
+- **[Example Scene](addons/horizon_sdk/examples/horizon_test_scene.tscn)** - Interactive demo of all features
 
 ## Support
 
