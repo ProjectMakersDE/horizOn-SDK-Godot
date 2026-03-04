@@ -97,7 +97,7 @@ func initialize(http: HorizonHttpClient, logger: HorizonLogger, auth: HorizonAut
 func register_session() -> bool:
 	var request := {
 		"sessionId": _sessionId,
-		"appVersion": ProjectSettings.get_setting("application/config/version", "0.0.0"),
+		"appVersion": _get_app_version(),
 		"platform": _cachedDeviceInfo.get("platform", OS.get_name()),
 		"userId": _get_user_id(),
 	}
@@ -233,7 +233,7 @@ func _submit_report(type: CrashType, message: String, stack_trace: String, extra
 		"type": type_str,
 		"message": message,
 		"fingerprint": fingerprint,
-		"appVersion": ProjectSettings.get_setting("application/config/version", "0.0.0"),
+		"appVersion": _get_app_version(),
 		"sdkVersion": _sdkVersion,
 		"platform": _cachedDeviceInfo.get("platform", OS.get_name()),
 		"os": "%s %s" % [_cachedDeviceInfo.get("os", OS.get_name()), _cachedDeviceInfo.get("osVersion", "")],
@@ -387,6 +387,16 @@ func _cache_device_info() -> void:
 		var screen_size := DisplayServer.screen_get_size()
 		_cachedDeviceInfo["screenWidth"] = screen_size.x
 		_cachedDeviceInfo["screenHeight"] = screen_size.y
+
+
+## Get the application version from ProjectSettings.
+## Falls back to "0.0.0" if not configured.
+## @return Version string (never empty)
+func _get_app_version() -> String:
+	var version = ProjectSettings.get_setting("application/config/version", "0.0.0")
+	if version is String and not version.is_empty():
+		return version
+	return "0.0.0"
 
 
 ## Get the user ID from override or auth.
