@@ -166,7 +166,7 @@ func _initializeManagers() -> void:
 
 	# Crash Reporting
 	crashes = HorizonCrashes.new()
-	crashes.initialize(_http, _logger, auth)
+	crashes.initialize(_http, _logger, auth, VERSION)
 
 	_logger.info("All managers initialized")
 

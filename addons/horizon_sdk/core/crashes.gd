@@ -45,6 +45,9 @@ var _http: HorizonHttpClient
 var _logger: HorizonLogger
 var _auth: HorizonAuth
 
+## SDK version (set during initialization)
+var _sdkVersion: String = "godot-1.2.0"
+
 ## Session state
 var _sessionId: String = ""
 var _userId: String = ""
@@ -70,10 +73,12 @@ var _cachedDeviceInfo: Dictionary = {}
 ## @param http HTTP client instance
 ## @param logger Logger instance
 ## @param auth Auth manager instance
-func initialize(http: HorizonHttpClient, logger: HorizonLogger, auth: HorizonAuth) -> void:
+## @param sdk_version SDK version string (e.g. "1.2.0")
+func initialize(http: HorizonHttpClient, logger: HorizonLogger, auth: HorizonAuth, sdk_version: String = "1.2.0") -> void:
 	_http = http
 	_logger = logger
 	_auth = auth
+	_sdkVersion = "godot-%s" % sdk_version
 
 	_sessionId = _generate_session_id()
 	_lastRefillTime = Time.get_unix_time_from_system()
@@ -92,13 +97,12 @@ func initialize(http: HorizonHttpClient, logger: HorizonLogger, auth: HorizonAut
 func register_session() -> bool:
 	var request := {
 		"sessionId": _sessionId,
+		"appVersion": ProjectSettings.get_setting("application/config/version", "0.0.0"),
+		"platform": _cachedDeviceInfo.get("platform", OS.get_name()),
 		"userId": _get_user_id(),
-		"deviceInfo": _cachedDeviceInfo,
-		"sdkVersion": "godot-1.0.0",
-		"timestamp": Time.get_datetime_string_from_system(true, true)
 	}
 
-	var response := await _http.postAsync("/api/v1/app/crash-reporting/session", request)
+	var response := await _http.postAsync("/api/v1/app/crash-reports/session", request)
 
 	if response.isSuccess:
 		_logger.info("Crash session registered: %s" % _sessionId)
@@ -224,16 +228,20 @@ func _submit_report(type: CrashType, message: String, stack_trace: String, extra
 	for key in extra_keys:
 		all_keys[key] = str(extra_keys[key])
 
-	# Build request
+	# Build request with flat device fields (matching server DTO)
 	var request := {
-		"sessionId": _sessionId,
-		"userId": _get_user_id(),
 		"type": type_str,
 		"message": message,
 		"fingerprint": fingerprint,
-		"deviceInfo": _cachedDeviceInfo,
+		"appVersion": ProjectSettings.get_setting("application/config/version", "0.0.0"),
+		"sdkVersion": _sdkVersion,
+		"platform": _cachedDeviceInfo.get("platform", OS.get_name()),
+		"os": "%s %s" % [_cachedDeviceInfo.get("os", OS.get_name()), _cachedDeviceInfo.get("osVersion", "")],
+		"deviceModel": _cachedDeviceInfo.get("model", OS.get_model_name()),
+		"deviceMemoryMb": _cachedDeviceInfo.get("staticMemoryMB", 0),
+		"sessionId": _sessionId,
+		"userId": _get_user_id(),
 		"breadcrumbs": breadcrumb_list,
-		"timestamp": Time.get_datetime_string_from_system(true, true)
 	}
 
 	if not stack_trace.is_empty():
@@ -242,7 +250,7 @@ func _submit_report(type: CrashType, message: String, stack_trace: String, extra
 	if not all_keys.is_empty():
 		request["customKeys"] = all_keys
 
-	var response := await _http.postAsync("/api/v1/app/crash-reporting/report", request)
+	var response := await _http.postAsync("/api/v1/app/crash-reports/create", request)
 
 	if response.isSuccess:
 		_logger.info("Crash report submitted (%s): %s" % [type_str, fingerprint])
