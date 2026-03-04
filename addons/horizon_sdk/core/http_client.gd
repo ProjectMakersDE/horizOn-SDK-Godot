@@ -367,14 +367,18 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 			return HorizonNetworkResponse.failure(errorMsg, responseCode, errorCode)
 
 		# Success - parse JSON response
-		var parsed := JSON.parse_string(bodyText)
-		if parsed == null and not bodyText.is_empty():
-			# Try to handle plain text responses
-			if bodyText.strip_edges() == "ok" or bodyText.strip_edges() == '"ok"':
-				parsed = {"success": true, "message": "ok"}
-			else:
-				_logger.warning("Failed to parse JSON response: %s" % bodyText)
+		var trimmed := bodyText.strip_edges()
+		var parsed: Variant = null
+		if trimmed.is_empty():
+			parsed = {}
+		elif trimmed.begins_with("{") or trimmed.begins_with("[") or trimmed.begins_with("\"") or trimmed == "true" or trimmed == "false" or trimmed == "null" or trimmed.is_valid_float():
+			parsed = JSON.parse_string(trimmed)
+			if parsed == null:
+				_logger.warning("Failed to parse JSON response: %s" % trimmed)
 				parsed = {"raw": bodyText}
+		else:
+			# Plain text response (e.g. "ok")
+			parsed = {"success": true, "message": trimmed}
 
 		var response := HorizonNetworkResponse.success(parsed if parsed != null else {}, responseCode)
 		request_completed.emit(url, response)
