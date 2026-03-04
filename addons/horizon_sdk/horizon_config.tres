@@ -4,5 +4,5 @@
 
 [resource]
 script = ExtResource("1_fk8n6")
-api_key = "horizon_IKIf2FcSbg9va1iUQFbUcZesX7ezTVWD"
+api_key = ""
 hosts = PackedStringArray("https://horizon.pm")
