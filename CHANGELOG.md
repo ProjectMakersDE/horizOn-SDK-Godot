@@ -1,3 +1,10 @@
+## [1.2.3](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.2.2...v1.2.3) (2026-03-04)
+
+
+### Bug Fixes
+
+* pre-validate response body before JSON parsing ([7a0a129](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/7a0a129eaa55343a811f59b747d0da5324c86920))
+
 ## [1.2.2](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.2.1...v1.2.2) (2026-03-04)
 
 
