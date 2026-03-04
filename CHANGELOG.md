@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.2.0...v1.2.1) (2026-03-04)
+
+
+### Bug Fixes
+
+* **crash:** correct API endpoint paths and request body format ([fccbb99](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/fccbb991e90908f1f79397423c2c211f786e6eeb))
+
 # [1.2.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.1.0...v1.2.0) (2026-02-20)
 
 
