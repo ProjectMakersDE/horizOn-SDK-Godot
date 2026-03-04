@@ -1,3 +1,10 @@
+## [1.2.2](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.2.1...v1.2.2) (2026-03-04)
+
+
+### Bug Fixes
+
+* **crashes:** ensure appVersion is never empty in crash requests ([508a070](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/508a070167bef5ee768f1674943195d0a462fffb))
+
 ## [1.2.1](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.2.0...v1.2.1) (2026-03-04)
 
 
