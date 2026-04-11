@@ -51,6 +51,7 @@ var giftCodes: HorizonGiftCodes
 var feedback: HorizonFeedback
 var userLogs: HorizonUserLogs
 var crashes: HorizonCrashes
+var email_sending: HorizonEmailSending
 
 ## State
 var _isInitialized: bool = false
@@ -167,6 +168,10 @@ func _initializeManagers() -> void:
 	# Crash Reporting
 	crashes = HorizonCrashes.new()
 	crashes.initialize(_http, _logger, auth, VERSION)
+
+	# Email Sending
+	email_sending = HorizonEmailSending.new()
+	email_sending.initialize(_http, _logger, auth)
 
 	_logger.info("All managers initialized")
 

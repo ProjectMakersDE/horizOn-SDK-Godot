@@ -25,6 +25,7 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https
 | 💬 **Feedback** | Submit bug reports and feature requests |
 | 📊 **User Logs** | Server-side player event tracking |
 | 💥 **Crash Reporting** | Automatic crash capture, exception tracking, breadcrumbs |
+| ✉️ **Email Sending** | Send transactional emails to players with templates and scheduling |
 
 ## Requirements
 
@@ -254,6 +255,32 @@ Use built-in constants for consistent breadcrumb categorization:
 | Breadcrumbs (ring buffer) | 50 |
 | Custom keys | 10 |
 
+### Email Sending
+
+**Email Sending** lets your game send transactional emails to registered players. Create multi-language HTML templates with variable placeholders in the horizOn Dashboard, then trigger immediate or scheduled email delivery from your game using the SDK. Emails are sent through your own SMTP server -- horizOn handles the queue, rendering, and scheduling while you keep full control over branding and deliverability.
+
+```gdscript
+# Send immediate email
+var response = await Horizon.email_sending.send_email(
+    "user-uuid", "welcome", {"username": "John"}, "en"
+)
+print("Email queued: ", response.get("id", ""))
+
+# Schedule email for later
+var scheduled = await Horizon.email_sending.send_email(
+    "user-uuid", "reminder", {"eventName": "Tournament"}, "en",
+    "2026-04-12T09:00:00Z"
+)
+
+# Check status
+var status = await Horizon.email_sending.get_email_status(response.get("id", ""))
+print("Status: ", status.get("status", ""))
+
+# Cancel a scheduled email
+var cancel = await Horizon.email_sending.cancel_email(scheduled.get("id", ""))
+print(cancel.get("message", ""))
+```
+
 ## Signals
 
 All operations emit signals for event-driven programming:
@@ -279,6 +306,12 @@ Horizon.cloudSave.data_loaded.connect(func(data): print("Loaded"))
 Horizon.crashes.crash_reported.connect(func(fingerprint): print("Crash reported: %s" % fingerprint))
 Horizon.crashes.crash_report_failed.connect(func(error): print("Report failed: %s" % error))
 Horizon.crashes.session_registered.connect(func(session_id): print("Session: %s" % session_id))
+
+# Email Sending
+Horizon.email_sending.email_sent.connect(func(response): print("Email sent: %s" % response.get("id", "")))
+Horizon.email_sending.email_send_failed.connect(func(error): print("Send failed: %s" % error))
+Horizon.email_sending.email_cancelled.connect(func(id): print("Cancelled: %s" % id))
+Horizon.email_sending.email_status_received.connect(func(response): print("Status: %s" % response.get("status", "")))
 ```
 
 ## Configuration Options
@@ -376,7 +409,8 @@ addons/horizon_sdk/
 │   ├── gift_codes.gd       # Gift codes
 │   ├── feedback.gd         # Feedback
 │   ├── user_logs.gd        # User logs
-│   └── crashes.gd          # Crash reporting
+│   ├── crashes.gd          # Crash reporting
+│   └── email_sending.gd    # Email sending
 ├── examples/
 │   └── horizon_test_scene.tscn
 └── horizon_config.tres      # Configuration resource
