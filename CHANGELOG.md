@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.2.3...v1.3.0) (2026-04-11)
+
+
+### Features
+
+* **email:** add email sending manager with template and scheduling support ([36822ef](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/36822ef1c5a458e519029cd05f5364cc7e8b31fd))
+
 ## [1.2.3](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.2.2...v1.2.3) (2026-03-04)
 
 
