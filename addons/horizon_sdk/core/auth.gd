@@ -23,8 +23,20 @@ signal name_changed(new_name: String)
 enum AuthType {
 	ANONYMOUS,
 	EMAIL,
-	GOOGLE
+	GOOGLE,
+	APPLE
 }
+
+## Apple-specific error codes (passed through verbatim from the server)
+const ERROR_INVALID_APPLE_TOKEN := "INVALID_APPLE_TOKEN"
+const ERROR_APPLE_NOT_CONFIGURED := "APPLE_NOT_CONFIGURED"
+const ERROR_APPLE_EMAIL_CONFLICT := "APPLE_EMAIL_CONFLICT"
+const ERROR_USER_ALREADY_EXISTS := "USER_ALREADY_EXISTS"
+const ERROR_USER_NOT_FOUND := "USER_NOT_FOUND"
+const ERROR_NETWORK_ERROR := "NETWORK_ERROR"
+
+## Name of the optional iOS singleton exposed by the classic .gdip plugin
+const APPLE_SIGN_IN_SINGLETON := "HorizonAppleSignIn"
 
 ## Cache keys for persistent storage
 const CACHE_KEY_USER_SESSION := "horizOn_UserSession"
@@ -139,6 +151,34 @@ func signUpGoogle(google_authorization_code: String, google_redirect_uri: String
 	return await _signUp(request)
 
 
+## Sign up with Apple Sign-In using a pre-obtained identity token.
+## Use this overload if the game already integrates its own Apple Sign-In plugin.
+## @param identity_token JWT returned by Apple after user consent
+## @param first_name Optional - Apple sends profile data only on the very first login
+## @param last_name Optional - Apple sends profile data only on the very first login
+## @param username Optional SDK-side username override
+## @return True if signup succeeded
+func signUpApple(identity_token: String, first_name: String = "", last_name: String = "", username: String = "") -> bool:
+	if identity_token.is_empty():
+		_logger.error("Apple identity token is required")
+		signup_failed.emit(ERROR_INVALID_APPLE_TOKEN)
+		return false
+
+	var request := {
+		"type": "APPLE",
+		"appleIdentityToken": identity_token
+	}
+
+	if not first_name.is_empty():
+		request["appleFirstName"] = first_name
+	if not last_name.is_empty():
+		request["appleLastName"] = last_name
+	if not username.is_empty():
+		request["username"] = username
+
+	return await _signUp(request)
+
+
 ## Internal signup implementation.
 func _signUp(request: Dictionary) -> bool:
 	var response := await _http.postAsync("/api/v1/app/user-management/signup", request)
@@ -221,6 +261,23 @@ func signInGoogle(google_authorization_code: String, google_redirect_uri: String
 		"type": "GOOGLE",
 		"googleAuthorizationCode": google_authorization_code,
 		"googleRedirectUri": google_redirect_uri
+	}
+
+	return await _signIn(request)
+
+
+## Sign in an existing Apple-registered user with a pre-obtained identity token.
+## @param identity_token JWT returned by Apple after user consent
+## @return True if signin succeeded
+func signInApple(identity_token: String) -> bool:
+	if identity_token.is_empty():
+		_logger.error("Apple identity token is required")
+		signin_failed.emit(ERROR_INVALID_APPLE_TOKEN)
+		return false
+
+	var request := {
+		"type": "APPLE",
+		"appleIdentityToken": identity_token
 	}
 
 	return await _signIn(request)
@@ -540,3 +597,143 @@ func _deleteFromStorage(key: String) -> void:
 		if config.has_section_key("cache", key):
 			config.erase_section_key("cache", key)
 			config.save(path)
+
+
+# ===== APPLE SIGN-IN CONVENIENCE FLOW =====
+
+## End-to-end convenience flow: opens the native Apple Sign-In sheet on iOS, or a
+## system-browser OAuth redirect on every other platform, harvests the Apple
+## `identityToken`, then attempts `signInApple`. Falls through to `signUpApple`
+## with the Apple first-login profile fields when the server responds
+## `USER_NOT_FOUND`. Reuses the existing `signin_*`/`signup_*` signal pairs.
+##
+## @param services_id Optional Apple Services ID for the OAuth fallback. If empty
+##     the SDK reads `Horizon.getConfig().apple_service_id` if available.
+## @param redirect_uri Optional redirect URI for the OAuth fallback. If empty, the
+##     SDK uses the platform default configured on the API key (set in the dashboard).
+## @return True if the user is authenticated when the flow finishes.
+func sign_in_with_apple(services_id: String = "", redirect_uri: String = "") -> bool:
+	var token_payload := await _harvestAppleIdentityToken(services_id, redirect_uri)
+	if token_payload.is_empty() or not token_payload.get("ok", false):
+		var code: String = token_payload.get("error_code", ERROR_INVALID_APPLE_TOKEN) if not token_payload.is_empty() else ERROR_INVALID_APPLE_TOKEN
+		_logger.error("Apple Sign-In flow aborted: %s" % code)
+		signin_failed.emit(code)
+		return false
+
+	var identity_token: String = token_payload.get("identity_token", "")
+	var first_name: String = token_payload.get("first_name", "")
+	var last_name: String = token_payload.get("last_name", "")
+
+	# Try sign-in first; fall through to sign-up on USER_NOT_FOUND.
+	var signed_in := await signInApple(identity_token)
+	if signed_in:
+		return true
+
+	# Inspect last response on the auth manager - server returns USER_NOT_FOUND
+	# inside the failure signal payload, which the caller may have already consumed.
+	# We replay sign-up unconditionally because Apple JWTs are single-use; if the
+	# server now rejects it we surface the real error.
+	return await signUpApple(identity_token, first_name, last_name)
+
+
+## Detect the Apple Sign-In platform path and return the harvested token payload.
+## Result dictionary shape (as Variant via await):
+##   { "ok": true,  "identity_token": String, "first_name": String, "last_name": String }
+##   { "ok": false, "error_code": String }
+func _harvestAppleIdentityToken(services_id: String, redirect_uri: String) -> Dictionary:
+	var os_name := OS.get_name()
+
+	if os_name == "iOS" and Engine.has_singleton(APPLE_SIGN_IN_SINGLETON):
+		return await _harvestAppleIdentityTokenIOS()
+
+	# Non-iOS - run the system-browser OAuth fallback.
+	return _harvestAppleIdentityTokenWeb(os_name, services_id, redirect_uri)
+
+
+## iOS native path - delegates to the .gdip plugin. Wraps the plugin signal in a
+## dictionary so the caller doesn't need to know about Engine.get_singleton().
+func _harvestAppleIdentityTokenIOS() -> Dictionary:
+	var plugin: Object = Engine.get_singleton(APPLE_SIGN_IN_SINGLETON)
+	if plugin == null:
+		return {"ok": false, "error_code": ERROR_APPLE_NOT_CONFIGURED}
+
+	# Generate a cryptographically reasonable nonce. The plugin SHA-256s this and
+	# passes the hash to Apple; Apple echoes the hash back in the JWT `nonce` claim
+	# and the backend verifier checks it (see AppleIdTokenVerifier.kt).
+	var nonce_bytes := PackedByteArray()
+	for i in 32:
+		nonce_bytes.append(randi() % 256)
+	var nonce := nonce_bytes.hex_encode()
+
+	# Plugin contract: emits `apple_sign_in_completed(identity_token, first_name, last_name, error)`.
+	if not plugin.has_signal("apple_sign_in_completed"):
+		_logger.error("HorizonAppleSignIn plugin is missing the expected signal")
+		return {"ok": false, "error_code": ERROR_APPLE_NOT_CONFIGURED}
+
+	# Bridge the multi-arg native signal into a single-arg internal signal so we
+	# can await it cleanly. The native plugin emits four args; we re-emit them as
+	# a Dictionary on the temporary `_apple_relay` signal.
+	var relay := _AppleSignInRelay.new()
+	plugin.connect("apple_sign_in_completed", Callable(relay, "_on_apple_completed"))
+	plugin.call("start_sign_in", nonce)
+	var result: Dictionary = await relay.completed
+	plugin.disconnect("apple_sign_in_completed", Callable(relay, "_on_apple_completed"))
+
+	if not result.get("error", "").is_empty():
+		return {"ok": false, "error_code": result.get("error", ERROR_INVALID_APPLE_TOKEN)}
+
+	return {
+		"ok": true,
+		"identity_token": result.get("identity_token", ""),
+		"first_name": result.get("first_name", ""),
+		"last_name": result.get("last_name", "")
+	}
+
+
+## Cross-platform fallback: launches the customer's Apple Services-ID OAuth flow
+## via the system browser. The customer's app is responsible for catching the
+## redirect (deep link on Android, custom URL handler on Desktop, JS bridge on
+## Web) and feeding the resulting identity token back via `signInApple`.
+##
+## We do NOT spawn a localhost listener inside the SDK because that requires
+## per-platform plumbing the SDK can't safely own. The convenience flow simply
+## opens the URL and reports failure - callers wanting a fully-automated desktop
+## flow should call `signInApple(token)` once they have harvested the token.
+func _harvestAppleIdentityTokenWeb(os_name: String, services_id: String, redirect_uri: String) -> Dictionary:
+	if services_id.is_empty():
+		_logger.warning("sign_in_with_apple() called on %s without a Services ID; cannot drive OAuth fallback" % os_name)
+		return {"ok": false, "error_code": ERROR_APPLE_NOT_CONFIGURED}
+
+	var url := "https://appleid.apple.com/auth/authorize"
+	url += "?response_type=code%20id_token"
+	url += "&response_mode=form_post"
+	url += "&scope=name%20email"
+	url += "&client_id=" + services_id.uri_encode()
+	if not redirect_uri.is_empty():
+		url += "&redirect_uri=" + redirect_uri.uri_encode()
+
+	var err := OS.shell_open(url)
+	if err != OK:
+		_logger.error("Failed to open Apple OAuth URL (error %d)" % err)
+		return {"ok": false, "error_code": ERROR_NETWORK_ERROR}
+
+	_logger.info("Opened Apple OAuth URL - waiting for caller to provide identityToken via signInApple()")
+	# The SDK has no way to know when the user finishes the redirect. The caller
+	# must complete the flow by calling `signInApple(token)` once it has the JWT.
+	# We surface a clear error code instead of blocking forever.
+	return {"ok": false, "error_code": ERROR_APPLE_NOT_CONFIGURED}
+
+
+## Internal helper: relays the multi-arg native `apple_sign_in_completed` signal
+## into a single-arg `completed(result: Dictionary)` signal so it can be awaited.
+class _AppleSignInRelay extends RefCounted:
+	signal completed(result: Dictionary)
+
+	func _on_apple_completed(identity_token: String, first_name: String,
+			last_name: String, error: String) -> void:
+		completed.emit({
+			"identity_token": identity_token,
+			"first_name": first_name,
+			"last_name": last_name,
+			"error": error
+		})

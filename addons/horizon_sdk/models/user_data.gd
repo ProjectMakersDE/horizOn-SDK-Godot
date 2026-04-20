@@ -16,7 +16,7 @@ var email: String = ""
 ## User's display name
 var displayName: String = ""
 
-## Authentication type: "ANONYMOUS", "EMAIL", or "GOOGLE"
+## Authentication type: "ANONYMOUS", "EMAIL", "GOOGLE", or "APPLE"
 var authType: String = ""
 
 ## Session access token for authenticated requests
@@ -33,6 +33,12 @@ var isAnonymous: bool = false
 
 ## Google ID for Google-authenticated users
 var googleId: String = ""
+
+## Apple `sub` claim for Apple-authenticated users (empty for non-Apple users)
+var apple_user_id: String = ""
+
+## True when the email is an Apple Private Relay alias (`@privaterelay.appleid.com`)
+var is_private_relay_email: bool = false
 
 ## Timestamp of last successful login
 var lastLoginTime: String = ""
@@ -58,6 +64,8 @@ func clear() -> void:
 	isEmailVerified = false
 	isAnonymous = false
 	googleId = ""
+	apple_user_id = ""
+	is_private_relay_email = false
 	lastLoginTime = ""
 	message = ""
 
@@ -75,6 +83,8 @@ func toDict() -> Dictionary:
 		"isEmailVerified": isEmailVerified,
 		"isAnonymous": isAnonymous,
 		"googleId": googleId,
+		"apple_user_id": apple_user_id,
+		"is_private_relay_email": is_private_relay_email,
 		"lastLoginTime": lastLoginTime,
 		"message": message
 	}
@@ -105,6 +115,8 @@ static func fromDict(data: Dictionary) -> HorizonUserData:
 	user.isEmailVerified = safeBool.call("isEmailVerified", safeBool.call("isVerified", false))
 	user.isAnonymous = safeBool.call("isAnonymous", false)
 	user.googleId = safeStr.call("googleId", "")
+	user.apple_user_id = safeStr.call("apple_user_id", safeStr.call("appleUserId", ""))
+	user.is_private_relay_email = safeBool.call("is_private_relay_email", safeBool.call("isPrivateRelayEmail", false))
 	user.lastLoginTime = safeStr.call("lastLoginTime", "")
 	user.message = safeStr.call("message", "")
 	return user
@@ -132,12 +144,16 @@ func updateFromAuthResponse(response: Dictionary) -> void:
 	isEmailVerified = safeBool.call("isVerified", isEmailVerified)
 	isAnonymous = safeBool.call("isAnonymous", isAnonymous)
 	googleId = safeStr.call("googleId", googleId)
+	apple_user_id = safeStr.call("appleUserId", apple_user_id)
+	is_private_relay_email = safeBool.call("isPrivateRelayEmail", is_private_relay_email)
 	message = safeStr.call("message", message)
 	lastLoginTime = Time.get_datetime_string_from_system(true, true)
 
 	# Determine auth type
 	if isAnonymous:
 		authType = "ANONYMOUS"
+	elif not apple_user_id.is_empty():
+		authType = "APPLE"
 	elif not googleId.is_empty():
 		authType = "GOOGLE"
 	elif not email.is_empty():

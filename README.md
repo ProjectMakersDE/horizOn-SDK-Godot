@@ -16,7 +16,7 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https
 
 | Feature | Description |
 |---------|-------------|
-| 🔐 **Authentication** | Email, anonymous, and Google sign-in/sign-up |
+| 🔐 **Authentication** | Email, anonymous, Google, and Apple sign-in/sign-up |
 | 🏆 **Leaderboards** | Submit scores, get rankings, view top players |
 | ☁️ **Cloud Saves** | Save and load player progress (JSON or binary) |
 | ⚙️ **Remote Config** | Server-side configuration values |
@@ -119,10 +119,23 @@ await Horizon.auth.signInEmail("user@example.com", "password")
 await Horizon.auth.signUpAnonymous("DisplayName")
 await Horizon.auth.restoreAnonymousSession()
 
+# Apple Sign-In - low-level (game already has the identity token)
+await Horizon.auth.signUpApple(identity_token, "Jane", "Doe")
+await Horizon.auth.signInApple(identity_token)
+
+# Apple Sign-In - convenience flow
+# - iOS: opens the native ASAuthorizationController sheet via the bundled
+#        classic .gdip plugin (addons/horizon_sdk/ios/HorizonAppleSignIn/)
+# - Other platforms: opens the system browser to the customer Services ID OAuth URL
+await Horizon.auth.sign_in_with_apple("com.customer.web")
+
 # Get current user
 if Horizon.isSignedIn():
     var user = Horizon.getCurrentUser()
     print(user.userId, user.displayName, user.authType)
+    # Apple users expose `apple_user_id` and `is_private_relay_email`
+    if user.authType == "APPLE":
+        print(user.apple_user_id, user.is_private_relay_email)
 
 # Sign out
 Horizon.auth.signOut()

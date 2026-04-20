@@ -1,0 +1,16 @@
+[config]
+
+name="HorizonAppleSignIn"
+binary="HorizonAppleSignIn"
+initialization="horizon_apple_sign_in_init"
+deinitialization="horizon_apple_sign_in_deinit"
+
+[dependencies]
+
+linked=[]
+embedded=[]
+system=["AuthenticationServices.framework"]
+
+[plist]
+
+UIRequiredDeviceCapabilities=["arm64"]
