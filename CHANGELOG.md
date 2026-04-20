@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.3.0...v1.4.0) (2026-04-20)
+
+
+### Features
+
+* **apple-signin:** apple sign-in support in godot sdk ([3cbea20](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/3cbea20413083571e694e200367c407170339179))
+
 # [1.3.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.2.3...v1.3.0) (2026-04-11)
 
 
