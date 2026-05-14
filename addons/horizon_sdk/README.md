@@ -273,9 +273,34 @@ Horizon.cloudSave.data_saved.connect(func(size): print("Saved %d bytes" % size))
 Horizon.cloudSave.data_loaded.connect(func(data): print("Loaded: %s" % data))
 ```
 
-## Example Scene
+## Examples
 
-Open the example scene to test all SDK features:
+### Hello horizOn
+
+The fastest first run. `hello_horizon` connects, signs in
+anonymously, submits a leaderboard score, and shows the result on
+screen. Start in 3 steps:
+
+1. Copy the `addons/horizon_sdk` folder into your project and enable the plugin in Project > Project Settings > Plugins.
+2. Import your app key: Project > Tools > horizOn: Import Config.
+3. Open and run `res://addons/horizon_sdk/examples/hello_horizon/hello_horizon.tscn`.
+
+See `examples/hello_horizon/README.md` for details.
+
+### Per-feature examples
+
+`examples/features/` holds one small, runnable script per feature
+(`auth_example.gd`, `leaderboard_example.gd`, `cloud_save_example.gd`,
+`crash_reporting_example.gd`, `user_logs_example.gd`,
+`remote_config_example.gd`, `news_example.gd`,
+`email_sending_example.gd`, `gift_codes_example.gd`,
+`feedback_example.gd`). Each shows the minimal flow for that feature
+with error handling. Attach a script to a `Node` and run the scene to
+try it. See `examples/features/README.md` for the run steps.
+
+### Full test UI
+
+Open the example scene to exercise every SDK endpoint from one UI:
 `res://addons/horizon_sdk/examples/horizon_test_scene.tscn`
 
 ## Project Settings
