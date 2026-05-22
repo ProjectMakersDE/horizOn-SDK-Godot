@@ -13,6 +13,7 @@ signal score_submit_failed(error: String)
 signal top_entries_loaded(entries: Array[HorizonLeaderboardEntry])
 signal rank_loaded(entry: HorizonLeaderboardEntry)
 signal around_entries_loaded(entries: Array[HorizonLeaderboardEntry])
+signal boards_loaded(boards: Array[Dictionary])
 
 ## Dependencies
 var _http: HorizonHttpClient
@@ -21,6 +22,26 @@ var _auth: HorizonAuth
 
 ## Cache for leaderboard data
 var _cache: Dictionary = {}
+
+
+func _normalizeBoardKey(board_key: String) -> String:
+	return board_key.strip_edges()
+
+
+func _buildEndpoint(board_key: String, action: String) -> String:
+	var normalized_board_key := _normalizeBoardKey(board_key)
+	if normalized_board_key.is_empty():
+		return "/api/v1/app/leaderboard/%s" % action
+
+	return "/api/v1/app/leaderboards/%s/%s" % [normalized_board_key.uri_encode(), action]
+
+
+func _buildCacheKey(board_key: String, action: String, value: int) -> String:
+	var normalized_board_key := _normalizeBoardKey(board_key)
+	if normalized_board_key.is_empty():
+		normalized_board_key = "default"
+
+	return "%s_%s_%d" % [normalized_board_key, action, value]
 
 
 ## Initialize the leaderboard manager.
@@ -37,8 +58,9 @@ func initialize(http: HorizonHttpClient, logger: HorizonLogger, auth: HorizonAut
 ## Submit a score to the leaderboard.
 ## Score is only updated if it's higher than the previous best.
 ## @param score Score value (must be positive)
+## @param board_key Optional board key for multi-board leaderboards
 ## @return True if submission succeeded
-func submitScore(score: int) -> bool:
+func submitScore(score: int, board_key: String = "") -> bool:
 	if not _auth.isSignedIn():
 		_logger.error("User must be signed in to submit score")
 		score_submit_failed.emit("User must be signed in")
@@ -50,8 +72,11 @@ func submitScore(score: int) -> bool:
 		"userId": user.userId,
 		"score": score
 	}
+	var normalized_board_key := _normalizeBoardKey(board_key)
+	if not normalized_board_key.is_empty():
+		request["leaderboardKey"] = normalized_board_key
 
-	var response := await _http.postAsync("/api/v1/app/leaderboard/submit", request)
+	var response := await _http.postAsync(_buildEndpoint(normalized_board_key, "submit"), request)
 
 	if response.isSuccess:
 		_logger.info("Score submitted: %d" % score)
@@ -68,8 +93,9 @@ func submitScore(score: int) -> bool:
 ## Get top entries from the leaderboard.
 ## @param limit Number of entries to retrieve (max 100)
 ## @param use_cache Whether to use cached data if available
+## @param board_key Optional board key for multi-board leaderboards
 ## @return Array of leaderboard entries, or empty array if failed
-func getTop(limit: int = 10, use_cache: bool = true) -> Array[HorizonLeaderboardEntry]:
+func getTop(limit: int = 10, use_cache: bool = true, board_key: String = "") -> Array[HorizonLeaderboardEntry]:
 	if not _auth.isSignedIn():
 		_logger.error("User must be signed in to get leaderboard")
 		return []
@@ -79,13 +105,13 @@ func getTop(limit: int = 10, use_cache: bool = true) -> Array[HorizonLeaderboard
 		limit = 100
 
 	# Check cache
-	var cacheKey := "top%d" % limit
+	var cacheKey := _buildCacheKey(board_key, "top", limit)
 	if use_cache and _cache.has(cacheKey):
 		_logger.debug("Cache hit: %s" % cacheKey)
 		return _cache[cacheKey]
 
 	var user := _auth.getCurrentUser()
-	var endpoint := "/api/v1/app/leaderboard/top?userId=%s&limit=%d" % [user.userId, limit]
+	var endpoint := "%s?userId=%s&limit=%d" % [_buildEndpoint(board_key, "top"), user.userId, limit]
 
 	var response := await _http.getAsync(endpoint)
 
@@ -105,14 +131,15 @@ func getTop(limit: int = 10, use_cache: bool = true) -> Array[HorizonLeaderboard
 
 
 ## Get the current user's rank in the leaderboard.
+## @param board_key Optional board key for multi-board leaderboards
 ## @return Leaderboard entry with user's rank, or null if failed
-func getRank() -> HorizonLeaderboardEntry:
+func getRank(board_key: String = "") -> HorizonLeaderboardEntry:
 	if not _auth.isSignedIn():
 		_logger.error("User must be signed in to get rank")
 		return null
 
 	var user := _auth.getCurrentUser()
-	var endpoint := "/api/v1/app/leaderboard/rank?userId=%s" % user.userId
+	var endpoint := "%s?userId=%s" % [_buildEndpoint(board_key, "rank"), user.userId]
 
 	var response := await _http.getAsync(endpoint)
 
@@ -129,20 +156,21 @@ func getRank() -> HorizonLeaderboardEntry:
 ## Get leaderboard entries around the current user's position.
 ## @param range_count Number of entries before and after the user
 ## @param use_cache Whether to use cached data if available
+## @param board_key Optional board key for multi-board leaderboards
 ## @return Array of leaderboard entries, or empty array if failed
-func getAround(range_count: int = 10, use_cache: bool = true) -> Array[HorizonLeaderboardEntry]:
+func getAround(range_count: int = 10, use_cache: bool = true, board_key: String = "") -> Array[HorizonLeaderboardEntry]:
 	if not _auth.isSignedIn():
 		_logger.error("User must be signed in to get leaderboard")
 		return []
 
 	# Check cache
-	var cacheKey := "around%d" % range_count
+	var cacheKey := _buildCacheKey(board_key, "around", range_count)
 	if use_cache and _cache.has(cacheKey):
 		_logger.debug("Cache hit: %s" % cacheKey)
 		return _cache[cacheKey]
 
 	var user := _auth.getCurrentUser()
-	var endpoint := "/api/v1/app/leaderboard/around?userId=%s&range=%d" % [user.userId, range_count]
+	var endpoint := "%s?userId=%s&range=%d" % [_buildEndpoint(board_key, "around"), user.userId, range_count]
 
 	var response := await _http.getAsync(endpoint)
 
@@ -158,6 +186,26 @@ func getAround(range_count: int = 10, use_cache: bool = true) -> Array[HorizonLe
 		return entries
 
 	_logger.error("Failed to get leaderboard entries around user: %s" % response.error)
+	return []
+
+
+## List available leaderboard boards for this app.
+## @return Array of board dictionaries, or empty array if failed
+func listBoards() -> Array[Dictionary]:
+	var response := await _http.getAsync("/api/v1/app/leaderboards")
+
+	if response.isSuccess and response.data is Dictionary:
+		var board_data: Array = response.data.get("boards", [])
+		var boards: Array[Dictionary] = []
+		for board in board_data:
+			if board is Dictionary:
+				boards.append(board)
+
+		_logger.info("Loaded %d leaderboard boards" % boards.size())
+		boards_loaded.emit(boards)
+		return boards
+
+	_logger.error("Failed to list leaderboard boards: %s" % response.error)
 	return []
 
 

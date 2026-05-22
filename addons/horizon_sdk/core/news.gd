@@ -75,6 +75,16 @@ func getCachedNews() -> Array[HorizonNewsEntry]:
 	return _cache
 
 
+## Get a cached news entry by ID.
+## @return News entry, or null if it is not cached
+func getNewsById(id: String) -> HorizonNewsEntry:
+	for entry in _cache:
+		if entry.id == id:
+			return entry
+
+	return null
+
+
 ## Clear the news cache.
 func clearCache() -> void:
 	_cache.clear()
