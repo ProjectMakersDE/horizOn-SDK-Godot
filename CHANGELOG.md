@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.4.1...v1.5.0) (2026-05-22)
+
+
+### Features
+
+* add multi-board leaderboard helpers ([df4e9ed](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/df4e9ed160f20b6fc71eee9efd242606307ff7c4))
+
 ## [1.4.1](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.4.0...v1.4.1) (2026-05-14)
 
 
