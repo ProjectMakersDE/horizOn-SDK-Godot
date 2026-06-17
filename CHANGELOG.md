@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.5.0...v1.6.0) (2026-06-17)
+
+
+### Features
+
+* **crash:** add crash reporting to Godot SDK ([36741dc](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/36741dcbaa8c835fd2cb2995f9a3c338e7f78f58))
+
 # [1.5.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.4.1...v1.5.0) (2026-05-22)
 
 
