@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.6.0...v1.7.0) (2026-06-24)
+
+
+### Features
+
+* **localization:** add localization core module and example ([3b5c92c](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/3b5c92cb744b6508d0f6b45a96f4a06c5ae1351e))
+
 # [1.6.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.5.0...v1.6.0) (2026-06-17)
 
 
