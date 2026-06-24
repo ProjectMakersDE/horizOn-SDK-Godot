@@ -20,6 +20,7 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https
 | 🏆 **Leaderboards** | Submit scores, get rankings, view top players |
 | ☁️ **Cloud Saves** | Save and load player progress (JSON or binary) |
 | ⚙️ **Remote Config** | Server-side configuration values |
+| 🌐 **Localization** | Server-side translations in 15 languages |
 | 📰 **News** | In-game news and announcements |
 | 🎁 **Gift Codes** | Validate and redeem promotional codes |
 | 💬 **Feedback** | Submit bug reports and feature requests |
@@ -180,6 +181,26 @@ var maintenance: bool = await Horizon.remoteConfig.getBool("maintenance_mode", f
 
 # Get all configs
 var all: Dictionary = await Horizon.remoteConfig.getAllConfigs()
+```
+
+### Localization
+
+```gdscript
+# Defaults to the OS language (one of 15 supported), otherwise "en".
+# Switch the active language at any time (clears the cache).
+Horizon.localization.setLanguage("de")
+
+# Get a single translation (uses the active language)
+var greeting: String = await Horizon.localization.getLocalization("greeting")
+
+# Override the language per call
+var greeting_en: String = await Horizon.localization.getLocalization("greeting", "en")
+
+# Get all translations for the active language
+var all: Dictionary = await Horizon.localization.getAllLocalizations()
+
+# List the languages available on the server
+var languages: Array = await Horizon.localization.getAvailableLanguages()
 ```
 
 ### News
@@ -418,6 +439,7 @@ addons/horizon_sdk/
 │   ├── leaderboard.gd      # Leaderboards
 │   ├── cloud_save.gd       # Cloud saves
 │   ├── remote_config.gd    # Remote config
+│   ├── localization.gd     # Localization
 │   ├── news.gd             # News
 │   ├── gift_codes.gd       # Gift codes
 │   ├── feedback.gd         # Feedback

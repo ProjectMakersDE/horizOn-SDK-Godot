@@ -14,6 +14,7 @@ feature's signals and return values.
 | Crash Reporting | `crash_reporting_example.gd` |
 | User Logs | `user_logs_example.gd` |
 | Remote Config | `remote_config_example.gd` |
+| Localization | `localization_example.gd` |
 | News | `news_example.gd` |
 | Email Sending | `email_sending_example.gd` |
 | Gift Codes | `gift_codes_example.gd` |
