@@ -1,3 +1,10 @@
+## [1.7.1](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.7.0...v1.7.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **security:** attach sessions to leaderboard submits ([d2f1eb9](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/d2f1eb9fe7e0b3f21cee9287f59b749f59588c71))
+
 # [1.7.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.6.0...v1.7.0) (2026-06-24)
 
 
