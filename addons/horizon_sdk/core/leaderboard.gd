@@ -76,7 +76,7 @@ func submitScore(score: int, board_key: String = "") -> bool:
 	if not normalized_board_key.is_empty():
 		request["leaderboardKey"] = normalized_board_key
 
-	var response := await _http.postAsync(_buildEndpoint(normalized_board_key, "submit"), request)
+	var response := await _http.postAsync(_buildEndpoint(normalized_board_key, "submit"), request, true)
 
 	if response.isSuccess:
 		_logger.info("Score submitted: %d" % score)
