@@ -2,6 +2,8 @@
 set -euo pipefail
 
 GODOT_BIN="${GODOT_BIN:-godot}"
+"$GODOT_BIN" --headless --editor --path . --quit
+
 python3 tests/mock_leaderboard_server.py &
 server_pid=$!
 trap 'kill "$server_pid" 2>/dev/null || true' EXIT
