@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import os
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -60,6 +61,11 @@ class ContractHandler(BaseHTTPRequestHandler):
 
 def main():
     server = HTTPServer(("127.0.0.1", 18720), ContractHandler)
+    # The socket is bound and listening now. Tell the runner it may start Godot.
+    ready_file = os.environ.get("MOCK_SERVER_READY_FILE")
+    if ready_file:
+        with open(ready_file, "w") as handle:
+            handle.write("ready\n")
     server.timeout = 10
     server.handle_request()
     if ContractHandler.requests_seen != 1:
