@@ -49,7 +49,7 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https
 
 ### Godot Asset Library
 
-A listing in the Godot Asset Library is pending. Until it is available, install the SDK with one of the options above.
+The SDK is not listed in the Godot Asset Library at the moment. Install it with one of the options above.
 
 ## Quick Start
 
