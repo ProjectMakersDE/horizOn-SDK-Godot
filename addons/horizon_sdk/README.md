@@ -362,7 +362,7 @@ entry.languageCode # e.g., "en"
 
 ## Support
 
-- Documentation: https://docs.horizon.pm
+- Documentation: https://horizon.pm/quickstart
 - Discord: https://discord.gg/projectmakers
 - Issues: https://github.com/projectmakers/horizon-godot-sdk/issues
 

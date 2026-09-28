@@ -12,7 +12,7 @@
 ##   4. Use services: Horizon.auth, Horizon.leaderboard, etc.
 ##
 ## Channel: ProjectMakers
-## Documentation: https://docs.horizon.pm
+## Documentation: https://horizon.pm/quickstart
 ## ============================================================
 extends Node
 
