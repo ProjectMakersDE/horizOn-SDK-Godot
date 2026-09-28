@@ -4,14 +4,17 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by ProjectMakers.
 
 ## Features
 
-- **Authentication**: Email, anonymous, and Google sign-in/sign-up
+- **Authentication**: Email, anonymous, Google, and Apple sign-in/sign-up
 - **Leaderboards**: Submit scores, get rankings, view top players
 - **Cloud Saves**: Save and load player progress (JSON or binary)
 - **Remote Config**: Server-side configuration values
+- **Localization**: Server-side translations in 15 languages
 - **News**: In-game news and announcements
 - **Gift Codes**: Validate and redeem promotional codes
 - **Feedback**: Submit bug reports and feature requests
 - **User Logs**: Server-side player event tracking
+- **Crash Reporting**: Automatic crash capture, exception tracking, breadcrumbs
+- **Email Sending**: Send transactional emails to players with templates and scheduling
 
 ## Installation
 
@@ -364,7 +367,7 @@ entry.languageCode # e.g., "en"
 
 - Documentation: https://horizon.pm/quickstart
 - Discord: https://discord.gg/projectmakers
-- Issues: https://github.com/projectmakers/horizon-godot-sdk/issues
+- Issues: https://github.com/ProjectMakersDE/horizOn-SDK-Godot/issues
 
 ## License
 
