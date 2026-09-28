@@ -1,3 +1,14 @@
+## [1.7.2](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.7.1...v1.7.2) (2026-09-28)
+
+
+### Bug Fixes
+
+* **ci:** initialize Godot class cache ([731b469](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/731b469fd4c315e2e53faccee5ec99197377727c))
+* **ci:** run transport tests on develop ([a4e43fb](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/a4e43fbd70cef201ea5271dd6f369902d34ffb12))
+* **ci:** wait for the mock server before the transport test ([5b8695e](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/5b8695e70457818f80b7a58a41f7ae39b84f7d26))
+* **http:** add deleteAsync and send the real HTTP method on the wire ([fb00443](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/fb0044345462710e23b97c53d28caa7c59e5e3ae))
+* **security:** test signed leaderboard transport ([30b7b31](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/30b7b31c68a4fd033c35ab9f2993374e35d863cf))
+
 ## [1.7.1](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.7.0...v1.7.1) (2026-09-01)
 
 
