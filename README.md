@@ -35,18 +35,21 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https
 
 ## Installation
 
-### Option 1: Asset Library (Recommended)
+### Option 1: GitHub Release ZIP (Recommended)
 
-1. Open Godot and go to **AssetLib**
-2. Search for "horizOn SDK"
-3. Download and install
-4. Enable the plugin in **Project > Project Settings > Plugins**
+1. Download `horizOn-SDK-vX.Y.Z.zip` from the [latest release](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/releases/latest)
+2. Unzip it and move the `horizon_sdk` folder into your project's `addons` directory, so the plugin lives at `res://addons/horizon_sdk/`
+3. Enable the plugin in **Project > Project Settings > Plugins**
 
-### Option 2: Manual Installation
+### Option 2: Manual Copy from the Repository
 
-1. Download the latest release from [Releases](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/releases)
+1. Clone or download this repository
 2. Copy the `addons/horizon_sdk` folder to your project's `addons` directory
 3. Enable the plugin in **Project > Project Settings > Plugins**
+
+### Godot Asset Library
+
+A listing in the Godot Asset Library is pending. Until it is available, install the SDK with one of the options above.
 
 ## Quick Start
 
