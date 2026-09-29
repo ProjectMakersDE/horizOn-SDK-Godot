@@ -2,32 +2,47 @@
 ## horizOn SDK - Validated Player State Model
 ## ============================================================
 ## Server-owned values of a player (Validated Actions Part 2,
-## TASK-887). Part 1 servers send `state: null` in every submit
-## result, which maps to an empty state (day "", no values).
-## Part 2 adds getState() on Horizon.validatedActions and may
-## extend this model.
+## TASK-887): currency, loot and other int64 counters that only
+## accepted validated runs change. Returned by
+## Horizon.validatedActions.getState() (GET .../state) and inside
+## every accepted submit result (`state`).
+##
+## A submit `state` of null (the rules define no values, or a
+## Part 1 server) maps to an empty state (day "", no values).
+## All numbers are at most 9,007,199,254,740,991 (2^53 - 1), so
+## Godot's float JSON numbers convert to int without loss.
 ## ============================================================
 class_name HorizonValidatedPlayerState
 extends RefCounted
+
+## Player the state belongs to. Only GET .../state sends it, "" in submit results
+var userId: String = ""
 
 ## UTC day of the daily counters ("2026-09-29"), "" when empty
 var day: String = ""
 
 ## One dictionary per value, sorted by key as sent by the server:
 ## {key: String, balance: int, earnedToday: int, dailyCap: int (0 = none),
-##  requested: int, credited: int} (requested / credited only in submit
-## results, 0 otherwise)
+##  requested: int, credited: int}
+## `requested` (amount sent in `earned`) and `credited` (amount applied)
+## are only sent for values touched by the run of a submit result; they
+## are 0 otherwise. credited < requested for a positive amount means the
+## daily cap or the maximum balance clamped it. A spend is either credited
+## in full or 0: grant a purchase only when credited == requested.
 var values: Array[Dictionary] = []
 
 
 ## Create a state from the JSON object.
-## Null safe: null gives an empty state, null numbers become 0.
+## Null safe: null gives an empty state, null numbers (e.g. `dailyCap`
+## without a cap) and omitted `requested` / `credited` become 0.
 ## @param data State dictionary (may be null)
 ## @return New state
 static func fromDict(data: Variant) -> HorizonValidatedPlayerState:
 	var state := HorizonValidatedPlayerState.new()
 	if not (data is Dictionary):
 		return state
+	var userIdValue: Variant = data.get("userId")
+	state.userId = userIdValue if userIdValue is String else ""
 	var dayValue: Variant = data.get("day")
 	state.day = dayValue if dayValue is String else ""
 	var rawValues: Variant = data.get("values")
@@ -52,23 +67,64 @@ func toDict() -> Dictionary:
 	var valueList: Array = []
 	for value in values:
 		valueList.append(value.duplicate())
-	return {"day": day, "values": valueList}
+	return {"userId": userId, "day": day, "values": valueList}
 
 
-## Check whether the state carries no values (always true in Part 1).
+## Check whether the state carries no values (a null state, or rules without values).
 ## @return True if there are no values
 func isEmpty() -> bool:
 	return values.is_empty()
+
+
+## Check whether the server sent a state object at all (every sent state has a day).
+## False for a submit result with `state: null`.
+## @return True if day is set
+func isPresent() -> bool:
+	return not day.is_empty()
+
+
+## One value by key.
+## @param key Value key (e.g. "gold")
+## @return A copy of the value dictionary, {} when the key is not listed
+func getValue(key: String) -> Dictionary:
+	for value in values:
+		if value.get("key", "") == key:
+			return value.duplicate()
+	return {}
 
 
 ## Balance of one value key.
 ## @param key Value key (e.g. "gold")
 ## @return The balance, 0 when the key is not listed
 func getBalance(key: String) -> int:
+	return int(getValue(key).get("balance", 0))
+
+
+## Check whether the run of a submit result applied the full requested amount
+## of a key (credited == requested). Use it before granting a purchase.
+## @param key Value key (e.g. "gold")
+## @return False when the key was not touched by the run or was clamped
+func isFullyCredited(key: String) -> bool:
+	var value := getValue(key)
+	if value.is_empty() or int(value.get("requested", 0)) == 0:
+		return false
+	return int(value.get("credited", 0)) == int(value.get("requested", 0))
+
+
+## Copy without the per-run amounts (requested and credited set to 0),
+## the shape of GET .../state. Used for the cached current state.
+## @param user_id Player to set when the state carries none
+## @return New state
+func withoutRunAmounts(user_id: String = "") -> HorizonValidatedPlayerState:
+	var copy := HorizonValidatedPlayerState.new()
+	copy.userId = userId if not userId.is_empty() else user_id
+	copy.day = day
 	for value in values:
-		if value.get("key", "") == key:
-			return int(value.get("balance", 0))
-	return 0
+		var entry: Dictionary = value.duplicate()
+		entry["requested"] = 0
+		entry["credited"] = 0
+		copy.values.append(entry)
+	return copy
 
 
 static func _int(value: Variant) -> int:

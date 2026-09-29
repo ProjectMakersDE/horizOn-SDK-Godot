@@ -2,6 +2,8 @@ extends SceneTree
 
 const TEST_PORT := 18883
 const LOG_HASH := "054a3b937f3f8b4d1d82fe353243cb91288f7975e2190a338e59271f17701375"
+## Largest value the server stores (2^53 - 1), exact in Godot's float JSON numbers
+const MAX_SAFE_INT := 9007199254740991
 
 
 func _initialize() -> void:
@@ -157,31 +159,112 @@ func _run() -> void:
 		_fail("a 422 TICKET_EXPIRED must clear the current run")
 		return
 
+	# 14. Part 2: getState() reads the server-owned values with the session,
+	# maps numbers up to 2^53 - 1 to int and dailyCap null to 0, and caches them.
+	var loaded := {"state": {}}
+	validated.state_loaded.connect(func(loaded_state: Dictionary): loaded["state"] = loaded_state)
+	var player_values := await validated.getState()
+	if player_values.is_empty():
+		_fail("getState was rejected by the contract server: %s" % validated.getLastErrorCode())
+		return
+	var gems: Dictionary = player_values["values"][1]
+	if player_values["userId"] != "user-883" or player_values["day"] != "2026-09-29" or (player_values["values"] as Array).size() != 3:
+		_fail("getState must map userId, day and every value")
+		return
+	if gems["key"] != "gems" or not (gems["balance"] is int) or gems["balance"] != MAX_SAFE_INT or gems["dailyCap"] != 0 or gems["requested"] != 0:
+		_fail("getState must read 2^53 - 1 as int, dailyCap null as 0 and requested as 0")
+		return
+	if loaded["state"].is_empty() or not validated.hasCurrentState() or validated.getBalance("gems") != MAX_SAFE_INT or validated.getBalance("gold") != 1250:
+		_fail("getState must emit state_loaded and cache the state")
+		return
+
+	# 15. + 16. Unbound run with earned: whole float amounts become int, malformed
+	# entries are dropped, the result state carries requested and credited.
+	run = await validated.startRun()
+	if run.is_empty():
+		_fail("startRun for the earned run was rejected: %s" % validated.getLastErrorCode())
+		return
+	var earned_result := await validated.submitValidated(0, input_log, "", "", [
+		{"key": "gold", "amount": 250.0},
+		{"key": "chest.gold", "amount": -1},
+		{"key": "", "amount": 5},
+		{"key": "gems", "amount": 1.5},
+		"not an entry"
+	])
+	if earned_result.is_empty():
+		_fail("the earned run was rejected by the contract server: %s" % validated.getLastErrorCode())
+		return
+	var run_state := HorizonValidatedPlayerState.fromDict(earned_result["state"])
+	var gold := run_state.getValue("gold")
+	if gold["requested"] != 250 or gold["credited"] != 150 or gold["balance"] != 1400 or gold["earnedToday"] != 400 or gold["dailyCap"] != 400:
+		_fail("the submit state must carry requested and credited of the touched values")
+		return
+	if not run_state.isFullyCredited("chest.gold") or run_state.isFullyCredited("gold") or run_state.isFullyCredited("gems"):
+		_fail("isFullyCredited must compare credited with requested of touched values only")
+		return
+	if earned_result["state"]["userId"] != "" or earned_result["leaderboardKey"] != "" or earned_result["rank"] != 0:
+		_fail("an unbound submit result must map null board fields and carry no userId in state")
+		return
+	var cached := validated.getCurrentState()
+	if validated.getBalance("gold") != 1400 or validated.getBalance("chest.gold") != 1 or cached["userId"] != "user-883" or cached["values"][2]["requested"] != 0:
+		_fail("an accepted run with a state must update the cached state without per-run amounts")
+		return
+
+	# 17. + 18. A value rejection (422 INSUFFICIENT_BALANCE) uses the ticket up
+	# and leaves the cached state unchanged.
+	run = await validated.startRun()
+	if run.is_empty():
+		_fail("startRun for the spend run was rejected: %s" % validated.getLastErrorCode())
+		return
+	if not (await validated.submitValidated(0, input_log, "", "", [{"key": "chest.gold", "amount": -5}])).is_empty() or validated.getLastErrorCode() != "INSUFFICIENT_BALANCE":
+		_fail("a 422 INSUFFICIENT_BALANCE must fail with that code")
+		return
+	if validated.hasActiveRun() or validated.getBalance("chest.gold") != 1:
+		_fail("a value rejection must clear the run and keep the cached state")
+		return
+
+	# 19. + 20. getState errors: server code, and NOT_SUPPORTED for a bare 404.
+	var state_failed := {"code": ""}
+	validated.state_load_failed.connect(func(_error: String, code: String): state_failed["code"] = code)
+	if not (await validated.getState()).is_empty() or validated.getLastErrorCode() != "SESSION_REQUIRED" or state_failed["code"] != "SESSION_REQUIRED":
+		_fail("a 401 SESSION_REQUIRED on getState must fail with that code and emit state_load_failed")
+		return
+	if validated.getBalance("gold") != 1400:
+		_fail("a failed getState must keep the cached state")
+		return
+	if not (await validated.getState()).is_empty() or validated.getLastErrorCode() != "NOT_SUPPORTED":
+		_fail("a 404 without code on getState must fail with NOT_SUPPORTED")
+		return
+
 	# Player changes drop the run: sign-out, and sign-in of another player.
 	validated._currentRun = {"runId": "local", "ticket": "local"}
 	validated._currentRunUserId = "user-883"
 	var same_user := HorizonUserData.new()
 	same_user.userId = "user-883"
 	auth.signin_completed.emit(same_user)
-	if not validated.hasActiveRun():
-		_fail("a sign-in of the same player must keep the run")
+	if not validated.hasActiveRun() or not validated.hasCurrentState():
+		_fail("a sign-in of the same player must keep the run and the cached state")
 		return
 	var other_user := HorizonUserData.new()
 	other_user.userId = "user-other"
 	auth.signin_completed.emit(other_user)
-	if validated.hasActiveRun():
-		_fail("a sign-in of another player must drop the run")
+	if validated.hasActiveRun() or validated.hasCurrentState() or not validated.getCurrentState().is_empty():
+		_fail("a sign-in of another player must drop the run and the cached state")
 		return
 	validated._currentRun = {"runId": "local", "ticket": "local"}
+	validated._currentState = HorizonValidatedPlayerState.fromDict({"userId": "user-883", "day": "2026-09-29", "values": []})
 	auth.signout_completed.emit()
-	if validated.hasActiveRun():
-		_fail("sign-out must drop the run")
+	if validated.hasActiveRun() or validated.hasCurrentState():
+		_fail("sign-out must drop the run and the cached state")
 		return
 
 	# Local: no session, no request.
 	http.sessionToken = ""
 	if not (await validated.startRun()).is_empty() or validated.getLastErrorCode() != "SESSION_REQUIRED":
 		_fail("startRun without session must fail locally with SESSION_REQUIRED")
+		return
+	if not (await validated.getState()).is_empty() or validated.getLastErrorCode() != "SESSION_REQUIRED":
+		_fail("getState without session must fail locally with SESSION_REQUIRED")
 		return
 	http.sessionToken = "session-token-883"
 	auth._currentUser.clear()
@@ -201,6 +284,10 @@ func _run() -> void:
 	})
 	if player_state.getBalance("gold") != 1250 or player_state.getBalance("gems") != 0 or player_state.values[0]["dailyCap"] != 0:
 		_fail("player state must map numbers to int and null to 0")
+		return
+	var null_state := HorizonValidatedPlayerState.fromDict(null)
+	if null_state.isPresent() or not null_state.isEmpty() or not null_state.getValue("gold").is_empty() or null_state.userId != "":
+		_fail("a null player state must be empty and not present")
 		return
 
 	# Keep the process alive while the contract server watches for an unexpected extra request.

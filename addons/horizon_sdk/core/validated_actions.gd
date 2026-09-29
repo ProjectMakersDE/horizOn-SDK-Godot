@@ -9,10 +9,11 @@
 ## session (Authorization: Bearer).
 ##
 ## Part 1 (TASK-883): run lifecycle, hash helper, error codes.
-## Part 2 (TASK-887) adds getState() and the `state` of submit
-## results, Part 3 (TASK-888) adds uploadEvidence() and the
-## automatic upload in _afterAccepted(). See the "PART 2" and
-## "PART 3" markers below.
+## Part 2 (TASK-887): server-owned player state. `earned` of a submit
+## credits or spends values, getState() reads them, the submit result
+## carries the `state` after the run, getCurrentState() caches it.
+## Part 3 (TASK-888) adds uploadEvidence() and the automatic upload
+## in _afterAccepted(). See the "PART 2" and "PART 3" markers below.
 ## ============================================================
 class_name HorizonValidatedActions
 extends RefCounted
@@ -23,9 +24,14 @@ signal run_start_failed(error: String, code: String)
 signal run_submitted(result: Dictionary)
 signal run_submit_failed(error: String, code: String)
 
+## Signals (Part 2)
+signal state_loaded(state: Dictionary)
+signal state_load_failed(error: String, code: String)
+
 ## Endpoints
 const ENDPOINT_RUNS := "/api/v1/app/validated-actions/runs"
 const ENDPOINT_SUBMIT := "/api/v1/app/validated-actions/submit"
+const ENDPOINT_STATE := "/api/v1/app/validated-actions/state"
 
 ## Length of a SHA-256 hex digest
 const INPUT_LOG_HASH_LENGTH := 64
@@ -64,6 +70,21 @@ const ERROR_VALIDATED_ACTIONS_UNAVAILABLE := "VALIDATED_ACTIONS_UNAVAILABLE"
 ## Normal leaderboard submit to a "validated only" board (see HorizonLeaderboard)
 const ERROR_VALIDATED_SUBMIT_REQUIRED := "VALIDATED_SUBMIT_REQUIRED"
 
+## Server error codes, Part 2 (422 on submit, the ticket is used up)
+## An `earned` key the rules do not define (also when they define no values)
+const ERROR_UNKNOWN_VALUE_KEY := "UNKNOWN_VALUE_KEY"
+## A key twice in `earned`
+const ERROR_DUPLICATE_VALUE_KEY := "DUPLICATE_VALUE_KEY"
+## Amount above `maxPerRun` of the value
+const ERROR_EARNED_ABOVE_MAX := "EARNED_ABOVE_MAX"
+## Amount below `minPerRun` of the value
+const ERROR_EARNED_BELOW_MIN := "EARNED_BELOW_MIN"
+## A spend larger than the balance
+const ERROR_INSUFFICIENT_BALANCE := "INSUFFICIENT_BALANCE"
+
+## Most `earned` entries the server takes per run (more is a 400)
+const MAX_EARNED_ENTRIES := 64
+
 ## Used from Part 3 on: upload the input log right away when a submit
 ## result requests evidence and the log bytes are known.
 var auto_upload_evidence: bool = true
@@ -78,6 +99,8 @@ var _leaderboard: HorizonLeaderboard
 var _currentRun: Dictionary = {}
 var _currentRunUserId: String = ""
 var _lastErrorCode: String = ""
+## Last known server-owned state (Part 2), null until loaded
+var _currentState: HorizonValidatedPlayerState = null
 
 
 ## Initialize the validated actions manager.
@@ -89,8 +112,9 @@ func initialize(http: HorizonHttpClient, logger: HorizonLogger, auth: HorizonAut
 	_logger = logger
 	_auth = auth
 
-	# A ticket belongs to one player: drop it on sign-out and when another player signs in.
-	_auth.signout_completed.connect(discardRun)
+	# Ticket and cached state belong to one player: drop them on sign-out and
+	# when another player signs in.
+	_auth.signout_completed.connect(_onSignedOut)
 	_auth.signin_completed.connect(_onPlayerChanged)
 	_auth.signup_completed.connect(_onPlayerChanged)
 
@@ -141,9 +165,13 @@ func startRun(leaderboard_key: String = "") -> Dictionary:
 ## @param input_log Raw input log bytes of the run
 ## @param stage Stage key for stage rules, "" for none
 ## @param leaderboard_key Target board, "" to use the ticket's board
-## @param earned [Part 2] Array of {"key": String, "amount": int}; Part 1 servers ignore it
+## @param earned [Part 2] Array of {"key": String, "amount": int}: positive
+##        amounts credit a server-owned value, negative amounts spend it.
+##        Send it only when the rules define values (UNKNOWN_VALUE_KEY otherwise).
 ## @return The result (accepted, runId, leaderboardKey, score, bestScore,
-##         isNewHighScore, rank, durationSeconds, state, evidence), or {} on failure
+##         isNewHighScore, rank, durationSeconds, state, evidence), or {} on failure.
+##         `state` holds every value after the run; touched keys carry
+##         `requested` and `credited`.
 func submitValidated(score: int, input_log: PackedByteArray, stage: String = "", leaderboard_key: String = "", earned: Array = []) -> Dictionary:
 	# Session and run are checked before hashing so the local codes win.
 	var precheck := _submitPrecheck()
@@ -157,7 +185,7 @@ func submitValidated(score: int, input_log: PackedByteArray, stage: String = "",
 ## @param input_log_hash SHA-256 of the input log, 64 hex characters
 ## @param stage Stage key for stage rules, "" for none
 ## @param leaderboard_key Target board, "" to use the ticket's board
-## @param earned [Part 2] Array of {"key": String, "amount": int}; Part 1 servers ignore it
+## @param earned [Part 2] Array of {"key": String, "amount": int}, see submitValidated()
 ## @return The result (same shape as submitValidated()), or {} on failure
 func submitValidatedWithHash(score: int, input_log_hash: String, stage: String = "", leaderboard_key: String = "", earned: Array = []) -> Dictionary:
 	var precheck := _submitPrecheck()
@@ -215,8 +243,59 @@ func discardRun() -> void:
 
 
 # ===== PART 2: SERVER-OWNED STATE (TASK-887) =====
-# getState(), signals state_loaded / state_load_failed. Submit results
-# already carry `state` (HorizonValidatedPlayerState, empty in Part 1).
+
+## Load the signed-in player's server-owned values and cache them.
+## Sends GET /api/v1/app/validated-actions/state?userId= with the session.
+## Read only: values change only through `earned` of an accepted run.
+## @return The state (userId, day, values with key, balance, earnedToday,
+##         dailyCap (0 = no cap), requested and credited always 0), or {}
+##         on failure (then getLastErrorCode() is set). `values` is empty
+##         when the rules define no values.
+func getState() -> Dictionary:
+	if not _hasSession():
+		return _failState("User must be signed in to load the player state", ERROR_SESSION_REQUIRED)
+
+	var userId := _auth.getCurrentUser().userId
+	var endpoint := "%s?userId=%s" % [ENDPOINT_STATE, userId.uri_encode()]
+	var response := await _http.getAsync(endpoint, true)
+
+	if response.isSuccess and response.data is Dictionary:
+		var state := HorizonValidatedPlayerState.fromDict(response.data).withoutRunAmounts(userId)
+		# Cache only while the same player is still signed in.
+		if _isCurrentPlayer(userId):
+			_currentState = state
+		_lastErrorCode = ""
+		var stateDict := state.toDict()
+		_logger.info("Validated player state loaded: %d values" % state.values.size())
+		state_loaded.emit(stateDict)
+		return stateDict
+
+	return _failState(_errorMessage(response, "Failed to load the player state"), _errorCodeOf(response))
+
+
+## The last known server-owned state: from getState() or the latest accepted
+## run whose result carried a state. Cleared on sign-out and when another
+## player signs in. `requested` and `credited` are always 0 here.
+## @return A copy of the state dictionary, {} when nothing is known yet
+func getCurrentState() -> Dictionary:
+	if _currentState == null:
+		return {}
+	return _currentState.toDict()
+
+
+## Check whether a state is cached (see getCurrentState()).
+## @return True after getState() or an accepted run with a state
+func hasCurrentState() -> bool:
+	return _currentState != null
+
+
+## Balance of one value in the cached state.
+## @param key Value key (e.g. "gold")
+## @return The balance, 0 when unknown or not listed
+func getBalance(key: String) -> int:
+	if _currentState == null:
+		return 0
+	return _currentState.getBalance(key)
 
 
 # ===== PART 3: EVIDENCE (TASK-888) =====
@@ -226,11 +305,27 @@ func discardRun() -> void:
 
 # ===== INTERNAL =====
 
+func _onSignedOut() -> void:
+	discardRun()
+	_currentState = null
+
+
 func _onPlayerChanged(user: HorizonUserData) -> void:
-	if _currentRun.is_empty():
-		return
-	if user == null or user.userId != _currentRunUserId:
+	var userId := user.userId if user != null else ""
+	if not _currentRun.is_empty() and userId != _currentRunUserId:
 		discardRun()
+	if _currentState != null and userId != _currentState.userId:
+		_currentState = null
+
+
+## True while the given player is still the signed-in one.
+func _isCurrentPlayer(user_id: String) -> bool:
+	return _auth.isSignedIn() and _auth.getCurrentUser().userId == user_id
+
+
+## Cache a state in the shape of GET .../state (no per-run amounts).
+func _setCurrentState(state: HorizonValidatedPlayerState, user_id: String) -> void:
+	_currentState = state.withoutRunAmounts(user_id)
 
 
 ## A call needs a signed-in player and a transport session token.
@@ -262,9 +357,11 @@ func _isValidHash(log_hash: String) -> bool:
 ## @param input_log Raw log bytes (empty when has_log is false), kept for Part 3
 func _submit(score: int, input_log_hash: String, stage: String, leaderboard_key: String, earned: Array, input_log: PackedByteArray, has_log: bool) -> Dictionary:
 	var user := _auth.getCurrentUser()
+	# Copied: the user object is updated in place when another player signs in.
+	var sentUserId := user.userId
 	var sentTicket: String = _currentRun.get("ticket", "")
 	var request := {
-		"userId": user.userId,
+		"userId": sentUserId,
 		"ticket": sentTicket,
 		"inputLogHash": input_log_hash,
 		"score": score
@@ -286,6 +383,9 @@ func _submit(score: int, input_log_hash: String, stage: String, leaderboard_key:
 		_endRun(sentTicket)
 		var result := HorizonValidatedSubmitResult.fromDict(response.data)
 		_lastErrorCode = ""
+		# `state: null` (rules without values, or a failed state write) keeps the cache.
+		if result.state.isPresent() and _isCurrentPlayer(sentUserId):
+			_setCurrentState(result.state, sentUserId)
 		_afterAccepted(result, input_log, has_log)
 		var resultDict := result.toDict()
 		_logger.info("Validated run accepted: %s (rank %d)" % [result.runId, result.rank])
@@ -340,15 +440,33 @@ func _isFinalRejection(response: HorizonNetworkResponse) -> bool:
 
 
 ## Keep only well formed earned entries: {"key": String, "amount": int}.
+## An amount may come as float (e.g. from parsed JSON) when it is a whole
+## number; everything else is dropped with a warning.
 func _normalizeEarned(earned: Array) -> Array:
 	var result: Array = []
 	for entry in earned:
-		if entry is Dictionary:
-			var key: Variant = entry.get("key")
-			var amount: Variant = entry.get("amount")
-			if key is String and not key.is_empty() and (amount is int or amount is float):
-				result.append({"key": key, "amount": int(amount)})
+		var normalized := _normalizeEarnedEntry(entry)
+		if normalized.is_empty():
+			_logger.warning("Validated submit: dropped malformed earned entry %s (expected {\"key\": String, \"amount\": int})" % str(entry))
+		else:
+			result.append(normalized)
+	if result.size() > MAX_EARNED_ENTRIES:
+		_logger.warning("Validated submit: %d earned entries, the server accepts at most %d" % [result.size(), MAX_EARNED_ENTRIES])
 	return result
+
+
+func _normalizeEarnedEntry(entry: Variant) -> Dictionary:
+	if not (entry is Dictionary):
+		return {}
+	var key: Variant = entry.get("key")
+	var amount: Variant = entry.get("amount")
+	if not (key is String) or key.strip_edges().is_empty():
+		return {}
+	if amount is int:
+		return {"key": key.strip_edges(), "amount": amount}
+	if amount is float and is_finite(amount) and amount == floorf(amount) and absf(amount) <= 9007199254740991.0:
+		return {"key": key.strip_edges(), "amount": int(amount)}
+	return {}
 
 
 ## Server `code` when present, otherwise NOT_SUPPORTED for a bare 404,
@@ -369,6 +487,14 @@ func _errorMessage(response: HorizonNetworkResponse, fallback: String) -> String
 	if not response.error.is_empty():
 		return response.error
 	return fallback
+
+
+## Record a state load failure, emit state_load_failed and return {}.
+func _failState(message: String, code: String) -> Dictionary:
+	_lastErrorCode = code
+	_logger.error("Validated player state load failed [%s]: %s" % [code, message])
+	state_load_failed.emit(message, code)
+	return {}
 
 
 ## Record a failure, emit the matching signal and return {}.

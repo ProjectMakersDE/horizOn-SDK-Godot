@@ -15,6 +15,13 @@ Expects exactly these requests, in this order, then no further request:
 11. POST /api/v1/app/validated-actions/runs    (bound to "weekly", answered with a fourth run)
 12. POST /api/v1/app/validated-actions/submit  (board "monthly", answered 422 LEADERBOARD_MISMATCH, run kept)
 13. POST /api/v1/app/validated-actions/submit  (same ticket, no board, answered 422 TICKET_EXPIRED, run cleared)
+14. GET  /api/v1/app/validated-actions/state?userId=user-883 (Part 2, values up to 2^53 - 1)
+15. POST /api/v1/app/validated-actions/runs    (unbound, answered with a fifth run)
+16. POST /api/v1/app/validated-actions/submit  (earned, answered 200 with state, requested and credited)
+17. POST /api/v1/app/validated-actions/runs    (unbound, answered with a sixth run)
+18. POST /api/v1/app/validated-actions/submit  (spend, answered 422 INSUFFICIENT_BALANCE)
+19. GET  /api/v1/app/validated-actions/state?userId=user-883 (answered 401 SESSION_REQUIRED)
+20. GET  /api/v1/app/validated-actions/state?userId=user-883 (answered 404 without code: NOT_SUPPORTED)
 Every request carries X-API-Key; all but the board list carry the player's Bearer session.
 """
 import json
@@ -32,6 +39,10 @@ RUNS_PATH = "/api/v1/app/validated-actions/runs"
 SUBMIT_PATH = "/api/v1/app/validated-actions/submit"
 BOARD_SUBMIT_PATH = "/api/v1/app/leaderboards/weekly/submit"
 BOARDS_PATH = "/api/v1/app/leaderboards"
+STATE_PATH = "/api/v1/app/validated-actions/state?userId=" + USER_ID
+
+# Largest value the server stores (2^53 - 1)
+MAX_SAFE_INT = 9007199254740991
 
 # SHA-256 of b"R1:L2:J3" (the log bytes the Godot test submits)
 LOG_HASH = "054a3b937f3f8b4d1d82fe353243cb91288f7975e2190a338e59271f17701375"
@@ -160,6 +171,70 @@ EXPECTED = [
         error_body(422, "Unprocessable Entity", "TICKET_EXPIRED",
                    "The run ticket has expired", SUBMIT_PATH, "run-4"),
     ),
+    (
+        "GET", STATE_PATH, True, None,
+        200, {},
+        {
+            "userId": USER_ID,
+            "day": "2026-09-29",
+            "values": [
+                {"key": "chest.gold", "balance": 2, "earnedToday": 0, "dailyCap": None},
+                {"key": "gems", "balance": MAX_SAFE_INT, "earnedToday": 0, "dailyCap": None},
+                {"key": "gold", "balance": 1250, "earnedToday": 250, "dailyCap": 400},
+            ],
+        },
+    ),
+    (
+        "POST", RUNS_PATH, True,
+        {"userId": USER_ID},
+        200, {}, run_body("run-5", "hzn-rt1:2026-09:ticket-five", 5, None),
+    ),
+    (
+        "POST", SUBMIT_PATH, True,
+        # 250.0 is sent as int, the malformed entries are dropped.
+        {"userId": USER_ID, "ticket": "hzn-rt1:2026-09:ticket-five", "inputLogHash": LOG_HASH,
+         "score": 0, "earned": [{"key": "gold", "amount": 250}, {"key": "chest.gold", "amount": -1}]},
+        200, {},
+        {
+            "accepted": True, "runId": "run-5", "leaderboardKey": None, "score": None,
+            "bestScore": None, "isNewHighScore": False, "rank": None, "durationSeconds": 95,
+            "state": {
+                "day": "2026-09-29",
+                "values": [
+                    {"key": "chest.gold", "balance": 1, "earnedToday": 0, "dailyCap": None,
+                     "requested": -1, "credited": -1},
+                    {"key": "gems", "balance": MAX_SAFE_INT, "earnedToday": 0, "dailyCap": None},
+                    # The daily cap of 400 clamps the credit of 250 to 150.
+                    {"key": "gold", "balance": 1400, "earnedToday": 400, "dailyCap": 400,
+                     "requested": 250, "credited": 150},
+                ],
+            },
+            "evidence": None,
+        },
+    ),
+    (
+        "POST", RUNS_PATH, True,
+        {"userId": USER_ID},
+        200, {}, run_body("run-6", "hzn-rt1:2026-09:ticket-six", 6, None),
+    ),
+    (
+        "POST", SUBMIT_PATH, True,
+        {"userId": USER_ID, "ticket": "hzn-rt1:2026-09:ticket-six", "inputLogHash": LOG_HASH,
+         "score": 0, "earned": [{"key": "chest.gold", "amount": -5}]},
+        422, {},
+        error_body(422, "Unprocessable Entity", "INSUFFICIENT_BALANCE",
+                   "The balance is too low for this spend", SUBMIT_PATH, "run-6"),
+    ),
+    (
+        "GET", STATE_PATH, True, None,
+        401, {"WWW-Authenticate": "Bearer"},
+        error_body(401, "Unauthorized", "SESSION_REQUIRED",
+                   "Invalid or expired session", "/api/v1/app/validated-actions/state"),
+    ),
+    (
+        "GET", STATE_PATH, True, None,
+        404, {}, {"message": "Not Found"},
+    ),
 ]
 
 
@@ -185,8 +260,10 @@ class ContractHandler(BaseHTTPRequestHandler):
         mismatches = []
         if method != exp_method:
             mismatches.append(f"method={method!r}")
-        if url.path != exp_path:
-            mismatches.append(f"path={url.path!r}")
+        # An expected path with a query is compared with the query.
+        actual_path = self.path if "?" in exp_path else url.path
+        if actual_path != exp_path:
+            mismatches.append(f"path={actual_path!r}")
         if self.headers.get("X-API-Key") != API_KEY:
             mismatches.append("missing or incorrect X-API-Key")
         if needs_session and self.headers.get("Authorization") != AUTHORIZATION:

@@ -284,9 +284,41 @@ Horizon.validatedActions.discardRun()     # drop it without submitting
 
 A ticket is single use. After an accepted run, a `422` rejection (ticket and rule codes) and `403 SCORE_LIMIT_REACHED` the current run is cleared. `LEADERBOARD_MISMATCH` (`422`), `LEADERBOARD_NOT_FOUND` (`404`), `SCORE_REQUIRED` and `PLAYER_NAME_REQUIRED` (`400`) are checked before the server consumes the ticket, so the run stays and you may fix the request and submit again with the same ticket. After network errors, `401`, `429` and `503` it stays as well. A new ticket needs a new `startRun()`. Sign-out also clears the run. After an accepted board run the leaderboard cache is cleared.
 
-Error codes from `getLastErrorCode()` and the `*_failed` signals: local `SESSION_REQUIRED`, `NO_ACTIVE_RUN`, `INVALID_INPUT_LOG_HASH`; ticket `TICKET_INVALID`, `TICKET_EXPIRED`, `TICKET_FOREIGN`, `TICKET_CONSUMED`, `LEADERBOARD_MISMATCH`; rules `STAGE_REQUIRED`, `STAGE_UNKNOWN`, `SCORE_ABOVE_MAX`, `SCORE_BELOW_MIN`, `STAGE_SCORE_ABOVE_MAX`, `STAGE_SCORE_BELOW_MIN`, `DURATION_TOO_SHORT`, `SCORE_RATE_TOO_HIGH`; others `SCORE_REQUIRED`, `PLAYER_NAME_REQUIRED`, `SCORE_LIMIT_REACHED`, `SESSION_FORBIDDEN`, `PLAYER_NOT_FOUND`, `LEADERBOARD_NOT_FOUND`, `RUN_RATE_LIMITED` and `RUN_CAPACITY_REACHED` (`429`, not retried automatically, the wait can be an hour), `VALIDATED_ACTIONS_UNAVAILABLE`, `NOT_SUPPORTED`. Without a server code the SDK error name is used (for example `NETWORK_ERROR`).
+Error codes from `getLastErrorCode()` and the `*_failed` signals: local `SESSION_REQUIRED`, `NO_ACTIVE_RUN`, `INVALID_INPUT_LOG_HASH`; ticket `TICKET_INVALID`, `TICKET_EXPIRED`, `TICKET_FOREIGN`, `TICKET_CONSUMED`, `LEADERBOARD_MISMATCH`; rules `STAGE_REQUIRED`, `STAGE_UNKNOWN`, `SCORE_ABOVE_MAX`, `SCORE_BELOW_MIN`, `STAGE_SCORE_ABOVE_MAX`, `STAGE_SCORE_BELOW_MIN`, `DURATION_TOO_SHORT`, `SCORE_RATE_TOO_HIGH`; values `UNKNOWN_VALUE_KEY`, `DUPLICATE_VALUE_KEY`, `EARNED_ABOVE_MAX`, `EARNED_BELOW_MIN`, `INSUFFICIENT_BALANCE`; others `SCORE_REQUIRED`, `PLAYER_NAME_REQUIRED`, `SCORE_LIMIT_REACHED`, `SESSION_FORBIDDEN`, `PLAYER_NOT_FOUND`, `LEADERBOARD_NOT_FOUND`, `RUN_RATE_LIMITED` and `RUN_CAPACITY_REACHED` (`429`, not retried automatically, the wait can be an hour), `VALIDATED_ACTIONS_UNAVAILABLE`, `NOT_SUPPORTED`. Without a server code the SDK error name is used (for example `NETWORK_ERROR`).
 
 A leaderboard with **Validated submissions only** (`validatedOnly: true` in `listBoards()`) refuses `submitScore()`: it returns `false` and `Horizon.leaderboard.getLastErrorCode()` is `VALIDATED_SUBMIT_REQUIRED`.
+
+#### Server-owned player state
+
+Currency, loot and other counters (int64) that only the server writes. Define the values in the Dashboard under Validated Actions (per value `maxPerRun`, optional `minPerRun` below 0 for spending, `dailyCap`, `maxBalance`). A run reports what it earned or spent with `earned`; the server checks every entry before it writes anything and then credits it, clamped by the daily cap and the maximum balance. There is no call that sets a balance.
+
+```gdscript
+# Read the values (every key of the rules, sorted, balance 0 when never earned)
+var state: Dictionary = await Horizon.validatedActions.getState()
+print(Horizon.validatedActions.getBalance("gold"))   # from the cached state
+# state["values"][i]: {key, balance, earnedToday, dailyCap (0 = no cap), requested, credited}
+
+# Earn 250 gold and spend one chest key in a run (negative amount = spend)
+var result: Dictionary = await Horizon.validatedActions.submitValidated(0, input_log, "", "", [
+    {"key": "gold", "amount": 250},
+    {"key": "chest.key", "amount": -1}
+])
+if not result.is_empty():
+    var run_state := HorizonValidatedPlayerState.fromDict(result["state"])
+    print(run_state.getValue("gold"))  # credited < requested: daily cap or max balance clamped it
+    if run_state.isFullyCredited("chest.key"):
+        open_chest()  # grant a purchase only when credited == requested
+```
+
+`getCurrentState()` returns the last known state (from `getState()` or the latest accepted run with a state, `requested` and `credited` set to 0), `{}` before the first load; sign-out and a sign-in of another player clear it. A result `state` of `{day: "", values: []}` means the server sent `null` (the rules define no values); the cache then stays as it is. All numbers are at most 9,007,199,254,740,991 (2^53 - 1) and arrive as `int`. Send `earned` only when the rules define values: every rejected entry uses up the ticket (`422`: `UNKNOWN_VALUE_KEY`, `DUPLICATE_VALUE_KEY`, `EARNED_ABOVE_MAX`, `EARNED_BELOW_MIN`, `INSUFFICIENT_BALANCE`). The SDK sends whole numbers only and drops malformed entries with a warning; at most 64 entries per run.
+
+**Cloud save as a mirror.** The cloud save stays a blob your game writes, so it may only hold a copy:
+1. After every accepted run, copy `result["state"]["values"]` (or `getCurrentState()`) into your save, for display and offline start.
+2. On start, call `getState()` and overwrite the copy with it, never the other way round.
+3. Never send a value from the save back as a balance; balances change only through `earned`.
+4. Values earned offline go into `earned` of the next validated run, where the per run and daily limits apply as usual.
+
+See `examples/features/validated_state_example.gd`.
 
 ### Feedback (Horizon.feedback)
 
@@ -357,6 +389,8 @@ Horizon.validatedActions.run_started.connect(func(run): print("Run %s, seed %d" 
 Horizon.validatedActions.run_start_failed.connect(func(error, code): print("Start failed [%s]: %s" % [code, error]))
 Horizon.validatedActions.run_submitted.connect(func(result): print("Accepted, rank %d" % result["rank"]))
 Horizon.validatedActions.run_submit_failed.connect(func(error, code): print("Rejected [%s]: %s" % [code, error]))
+Horizon.validatedActions.state_loaded.connect(func(state): print("Values: %d" % state["values"].size()))
+Horizon.validatedActions.state_load_failed.connect(func(error, code): print("State failed [%s]: %s" % [code, error]))
 ```
 
 ### Cloud Save
@@ -387,7 +421,7 @@ See `examples/hello_horizon/README.md` for details.
 `remote_config_example.gd`, `news_example.gd`,
 `email_sending_example.gd`, `gift_codes_example.gd`,
 `feedback_example.gd`, `player_profile_example.gd`,
-`validated_actions_example.gd`). Each shows the minimal flow for that feature
+`validated_actions_example.gd`, `validated_state_example.gd`). Each shows the minimal flow for that feature
 with error handling. Attach a script to a `Node` and run the scene to
 try it. See `examples/features/README.md` for the run steps.
 
@@ -455,7 +489,7 @@ profile.hasFrame()   # True if frameId is set
 ```gdscript
 HorizonValidatedRun           # runId, ticket, seed, leaderboardKey ("" = unbound), issuedAt, expiresAt, expiresInSeconds
 HorizonValidatedSubmitResult  # accepted, runId, leaderboardKey, score, bestScore, isNewHighScore, rank, durationSeconds, state, evidence
-HorizonValidatedPlayerState   # day, values, getBalance(key) (server-owned values, filled from Part 2 on)
+HorizonValidatedPlayerState   # userId, day, values, getBalance(key), getValue(key), isFullyCredited(key), isPresent()
 HorizonValidatedEvidenceRequest # required, runId, uploadBefore, maxBytes (filled from Part 3 on)
 ```
 
