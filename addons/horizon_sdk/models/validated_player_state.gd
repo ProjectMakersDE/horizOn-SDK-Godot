@@ -15,6 +15,9 @@
 class_name HorizonValidatedPlayerState
 extends RefCounted
 
+## Per-run fields, present only for values touched by a submit
+const RUN_FIELDS: Array[String] = ["requested", "credited"]
+
 ## Player the state belongs to. Only GET .../state sends it, "" in submit results
 var userId: String = ""
 
@@ -22,11 +25,11 @@ var userId: String = ""
 var day: String = ""
 
 ## One dictionary per value, sorted by key as sent by the server:
-## {key: String, balance: int, earnedToday: int, dailyCap: int (0 = none),
-##  requested: int, credited: int}
-## `requested` (amount sent in `earned`) and `credited` (amount applied)
-## are only sent for values touched by the run of a submit result; they
-## are 0 otherwise. credited < requested for a positive amount means the
+## {key: String, balance: int, earnedToday: int, dailyCap: int (0 = none)}
+## plus `requested` (amount sent in `earned`) and `credited` (amount applied)
+## as int, only for values touched by the run of a submit result. The server
+## omits both everywhere else (GET .../state, untouched values), and so does
+## this model: the keys are absent, not 0. credited < requested for a positive amount means the
 ## daily cap or the maximum balance clamped it. A spend is either credited
 ## in full or 0: grant a purchase only when credited == requested.
 var values: Array[Dictionary] = []
@@ -34,7 +37,7 @@ var values: Array[Dictionary] = []
 
 ## Create a state from the JSON object.
 ## Null safe: null gives an empty state, null numbers (e.g. `dailyCap`
-## without a cap) and omitted `requested` / `credited` become 0.
+## without a cap) become 0. Omitted or null `requested` / `credited` stay absent.
 ## @param data State dictionary (may be null)
 ## @return New state
 static func fromDict(data: Variant) -> HorizonValidatedPlayerState:
@@ -50,14 +53,16 @@ static func fromDict(data: Variant) -> HorizonValidatedPlayerState:
 		for entry in rawValues:
 			if entry is Dictionary:
 				var key: Variant = entry.get("key")
-				state.values.append({
+				var value := {
 					"key": key if key is String else "",
 					"balance": _int(entry.get("balance")),
 					"earnedToday": _int(entry.get("earnedToday")),
-					"dailyCap": _int(entry.get("dailyCap")),
-					"requested": _int(entry.get("requested")),
-					"credited": _int(entry.get("credited"))
-				})
+					"dailyCap": _int(entry.get("dailyCap"))
+				}
+				for runField in RUN_FIELDS:
+					if _isNumber(entry.get(runField)):
+						value[runField] = int(entry.get(runField))
+				state.values.append(value)
 	return state
 
 
@@ -106,12 +111,12 @@ func getBalance(key: String) -> int:
 ## @return False when the key was not touched by the run or was clamped
 func isFullyCredited(key: String) -> bool:
 	var value := getValue(key)
-	if value.is_empty() or int(value.get("requested", 0)) == 0:
+	if not value.has("requested") or int(value["requested"]) == 0:
 		return false
-	return int(value.get("credited", 0)) == int(value.get("requested", 0))
+	return int(value.get("credited", 0)) == int(value["requested"])
 
 
-## Copy without the per-run amounts (requested and credited set to 0),
+## Copy without the per-run amounts (no requested and credited keys),
 ## the shape of GET .../state. Used for the cached current state.
 ## @param user_id Player to set when the state carries none
 ## @return New state
@@ -121,13 +126,17 @@ func withoutRunAmounts(user_id: String = "") -> HorizonValidatedPlayerState:
 	copy.day = day
 	for value in values:
 		var entry: Dictionary = value.duplicate()
-		entry["requested"] = 0
-		entry["credited"] = 0
+		for runField in RUN_FIELDS:
+			entry.erase(runField)
 		copy.values.append(entry)
 	return copy
 
 
 static func _int(value: Variant) -> int:
-	if value is int or value is float:
+	if _isNumber(value):
 		return int(value)
 	return 0
+
+
+static func _isNumber(value: Variant) -> bool:
+	return value is int or value is float

@@ -282,7 +282,8 @@ func discardRun() -> void:
 ## Sends GET /api/v1/app/validated-actions/state?userId= with the session.
 ## Read only: values change only through `earned` of an accepted run.
 ## @return The state (userId, day, values with key, balance, earnedToday,
-##         dailyCap (0 = no cap), requested and credited always 0), or {}
+##         dailyCap (0 = no cap); no requested or credited, as the server
+##         omits them here), or {}
 ##         on failure (then getLastErrorCode() is set). `values` is empty
 ##         when the rules define no values.
 func getState() -> Dictionary:
@@ -309,7 +310,7 @@ func getState() -> Dictionary:
 
 ## The last known server-owned state: from getState() or the latest accepted
 ## run whose result carried a state. Cleared on sign-out and when another
-## player signs in. `requested` and `credited` are always 0 here.
+## player signs in. Values carry no `requested` or `credited` here.
 ## @return A copy of the state dictionary, {} when nothing is known yet
 func getCurrentState() -> Dictionary:
 	if _currentState == null:

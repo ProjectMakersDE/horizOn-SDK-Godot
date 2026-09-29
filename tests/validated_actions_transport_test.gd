@@ -171,8 +171,8 @@ func _run() -> void:
 	if player_values["userId"] != "user-883" or player_values["day"] != "2026-09-29" or (player_values["values"] as Array).size() != 3:
 		_fail("getState must map userId, day and every value")
 		return
-	if gems["key"] != "gems" or not (gems["balance"] is int) or gems["balance"] != MAX_SAFE_INT or gems["dailyCap"] != 0 or gems["requested"] != 0:
-		_fail("getState must read 2^53 - 1 as int, dailyCap null as 0 and requested as 0")
+	if gems["key"] != "gems" or not (gems["balance"] is int) or gems["balance"] != MAX_SAFE_INT or gems["dailyCap"] != 0 or gems.has("requested") or gems.has("credited"):
+		_fail("getState must read 2^53 - 1 as int, dailyCap null as 0 and leave the omitted requested and credited absent")
 		return
 	if loaded["state"].is_empty() or not validated.hasCurrentState() or validated.getBalance("gems") != MAX_SAFE_INT or validated.getBalance("gold") != 1250:
 		_fail("getState must emit state_loaded and cache the state")
@@ -199,6 +199,10 @@ func _run() -> void:
 	if gold["requested"] != 250 or gold["credited"] != 150 or gold["balance"] != 1400 or gold["earnedToday"] != 400 or gold["dailyCap"] != 400:
 		_fail("the submit state must carry requested and credited of the touched values")
 		return
+	var untouched := run_state.getValue("gems")
+	if untouched.is_empty() or untouched.has("requested") or untouched.has("credited"):
+		_fail("an untouched value of the submit state must carry no requested and credited")
+		return
 	if not run_state.isFullyCredited("chest.gold") or run_state.isFullyCredited("gold") or run_state.isFullyCredited("gems"):
 		_fail("isFullyCredited must compare credited with requested of touched values only")
 		return
@@ -206,7 +210,7 @@ func _run() -> void:
 		_fail("an unbound submit result must map null board fields and carry no userId in state")
 		return
 	var cached := validated.getCurrentState()
-	if validated.getBalance("gold") != 1400 or validated.getBalance("chest.gold") != 1 or cached["userId"] != "user-883" or cached["values"][2]["requested"] != 0:
+	if validated.getBalance("gold") != 1400 or validated.getBalance("chest.gold") != 1 or cached["userId"] != "user-883" or cached["values"][2].has("requested") or cached["values"][2].has("credited"):
 		_fail("an accepted run with a state must update the cached state without per-run amounts")
 		return
 

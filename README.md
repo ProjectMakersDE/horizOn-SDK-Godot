@@ -305,7 +305,7 @@ Currency, loot and other counters (int64) that only the server writes. Define th
 # Read the values (every key of the rules, sorted, balance 0 when never earned)
 var state: Dictionary = await Horizon.validatedActions.getState()
 print(Horizon.validatedActions.getBalance("gold"))   # from the cached state
-# state["values"][i]: {key, balance, earnedToday, dailyCap (0 = no cap), requested, credited}
+# state["values"][i]: {key, balance, earnedToday, dailyCap (0 = no cap)}; a submit result adds requested and credited to the values its run touched
 
 # Earn 250 gold and spend one chest key in a run (negative amount = spend)
 var result: Dictionary = await Horizon.validatedActions.submitValidated(0, input_log, "", "", [
@@ -319,7 +319,7 @@ if not result.is_empty():
         open_chest()  # grant a purchase only when credited == requested
 ```
 
-`getCurrentState()` returns the last known state (from `getState()` or the latest accepted run with a state, `requested` and `credited` set to 0), `{}` before the first load; sign-out and a sign-in of another player clear it. A result `state` of `{day: "", values: []}` means the server sent `null` (the rules define no values); the cache then stays as it is. All numbers are at most 9,007,199,254,740,991 (2^53 - 1) and arrive as `int`. Send `earned` only when the rules define values: every rejected entry uses up the ticket (`422`: `UNKNOWN_VALUE_KEY`, `DUPLICATE_VALUE_KEY`, `EARNED_ABOVE_MAX`, `EARNED_BELOW_MIN`, `INSUFFICIENT_BALANCE`). The SDK sends whole numbers only and drops malformed entries with a warning; at most 64 entries per run.
+`getCurrentState()` returns the last known state (from `getState()` or the latest accepted run with a state, without `requested` and `credited`), `{}` before the first load; sign-out and a sign-in of another player clear it. A result `state` of `{day: "", values: []}` means the server sent `null` (the rules define no values); the cache then stays as it is. All numbers are at most 9,007,199,254,740,991 (2^53 - 1) and arrive as `int`. Send `earned` only when the rules define values: every rejected entry uses up the ticket (`422`: `UNKNOWN_VALUE_KEY`, `DUPLICATE_VALUE_KEY`, `EARNED_ABOVE_MAX`, `EARNED_BELOW_MIN`, `INSUFFICIENT_BALANCE`). The SDK sends whole numbers only and drops malformed entries with a warning; at most 64 entries per run.
 
 **Cloud save as a mirror.** The cloud save stays a blob your game writes, so it may only hold a copy:
 1. After every accepted run, copy `result["state"]["values"]` (or `getCurrentState()`) into your save, for display and offline start.
