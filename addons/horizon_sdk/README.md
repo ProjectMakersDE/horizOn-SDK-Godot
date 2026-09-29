@@ -12,6 +12,7 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by ProjectMakers.
 - **News**: In-game news and announcements
 - **Gift Codes**: Validate and redeem promotional codes, unlock cosmetics
 - **Player Profile**: Avatar, frame and badges per player, shown on leaderboards
+- **Validated Actions**: Server-checked runs: single-use tickets, server seed, rule checks before a score is written
 - **Feedback**: Submit bug reports and feature requests
 - **User Logs**: Server-side player event tracking
 - **Crash Reporting**: Automatic crash capture, exception tracking, breadcrumbs
@@ -250,6 +251,43 @@ var cached: Dictionary = Horizon.playerProfile.getCurrentProfile()
 
 Error codes from `getLastErrorCode()` and the `*_failed` signals: `SESSION_REQUIRED` (no session, checked locally), `INVALID_BADGES`, `INVALID_COSMETIC_ID` (also checked locally), `COSMETIC_NOT_FOUND`, `COSMETIC_TYPE_MISMATCH`, `COSMETIC_LOCKED`, `SESSION_FORBIDDEN`, `PLAYER_NOT_FOUND`. Without a server code the SDK error name is used (for example `API_RATE_LIMITED`, `NETWORK_ERROR`).
 
+### Validated Actions (Horizon.validatedActions)
+
+Server-checked runs for competitive leaderboards. `startRun()` returns a single-use ticket with a server seed; your game seeds its deterministic randomness with it and records an input log. `submitValidated()` sends the score and the SHA-256 of the log; the server checks the ticket and the rules of your API key (score limits, minimum duration, score per second, stages) before anything is written. The rules live on the server only and never appear in responses. Every call needs a signed-in player and sends the player session (`Authorization: Bearer`). Cloud only: the self-hosted simpleServer does not support it (`NOT_SUPPORTED`).
+
+```gdscript
+# 1. Get a ticket ("" for a run without leaderboard)
+var run: Dictionary = await Horizon.validatedActions.startRun("weekly")
+if run.is_empty():
+    print(Horizon.validatedActions.getLastErrorCode())  # e.g. RUN_RATE_LIMITED
+var rng := RandomNumberGenerator.new()
+rng.seed = run["seed"]
+
+# 2. Play and record the inputs as bytes (input_log: PackedByteArray)
+
+# 3. Submit: the SDK hashes the log (SHA-256) and sends the current ticket.
+#    Optional: stage, leaderboard key ("" = the ticket's board), earned values (Part 2)
+var result: Dictionary = await Horizon.validatedActions.submitValidated(18250, input_log, "wave_3")
+if result.is_empty():
+    print(Horizon.validatedActions.getLastErrorCode())  # e.g. DURATION_TOO_SHORT
+else:
+    print("Rank %d, best %d" % [result["rank"], result["bestScore"]])
+
+# With a ready hash (64 hex characters) instead of the log bytes
+var hash_hex := HorizonValidatedActions.computeInputLogHash(input_log)
+# await Horizon.validatedActions.submitValidatedWithHash(18250, hash_hex)
+
+Horizon.validatedActions.hasActiveRun()   # a run waits for its submit
+Horizon.validatedActions.getCurrentRun()  # the run, {} when none
+Horizon.validatedActions.discardRun()     # drop it without submitting
+```
+
+A ticket is single use. After an accepted run, a `422` rejection and `403 SCORE_LIMIT_REACHED` the current run is cleared; after network errors, `401`, `404`, `429` and `503` it stays so you may retry with the same ticket. A new ticket needs a new `startRun()`. Sign-out also clears the run. After an accepted board run the leaderboard cache is cleared.
+
+Error codes from `getLastErrorCode()` and the `*_failed` signals: local `SESSION_REQUIRED`, `NO_ACTIVE_RUN`, `INVALID_INPUT_LOG_HASH`; ticket `TICKET_INVALID`, `TICKET_EXPIRED`, `TICKET_FOREIGN`, `TICKET_CONSUMED`, `LEADERBOARD_MISMATCH`; rules `STAGE_REQUIRED`, `STAGE_UNKNOWN`, `SCORE_ABOVE_MAX`, `SCORE_BELOW_MIN`, `STAGE_SCORE_ABOVE_MAX`, `STAGE_SCORE_BELOW_MIN`, `DURATION_TOO_SHORT`, `SCORE_RATE_TOO_HIGH`; others `SCORE_REQUIRED`, `PLAYER_NAME_REQUIRED`, `SCORE_LIMIT_REACHED`, `SESSION_FORBIDDEN`, `PLAYER_NOT_FOUND`, `LEADERBOARD_NOT_FOUND`, `RUN_RATE_LIMITED` and `RUN_CAPACITY_REACHED` (`429`, not retried automatically, the wait can be an hour), `VALIDATED_ACTIONS_UNAVAILABLE`, `NOT_SUPPORTED`. Without a server code the SDK error name is used (for example `NETWORK_ERROR`).
+
+A leaderboard with **Validated submissions only** (`validatedOnly: true` in `listBoards()`) refuses `submitScore()`: it returns `false` and `Horizon.leaderboard.getLastErrorCode()` is `VALIDATED_SUBMIT_REQUIRED`.
+
 ### Feedback (Horizon.feedback)
 
 ```gdscript
@@ -313,6 +351,14 @@ Horizon.playerProfile.profile_updated.connect(func(profile): print("Saved: %s" %
 Horizon.playerProfile.profile_update_failed.connect(func(error, code): print("Save failed [%s]: %s" % [code, error]))
 ```
 
+### Validated Actions
+```gdscript
+Horizon.validatedActions.run_started.connect(func(run): print("Run %s, seed %d" % [run["runId"], run["seed"]]))
+Horizon.validatedActions.run_start_failed.connect(func(error, code): print("Start failed [%s]: %s" % [code, error]))
+Horizon.validatedActions.run_submitted.connect(func(result): print("Accepted, rank %d" % result["rank"]))
+Horizon.validatedActions.run_submit_failed.connect(func(error, code): print("Rejected [%s]: %s" % [code, error]))
+```
+
 ### Cloud Save
 ```gdscript
 Horizon.cloudSave.data_saved.connect(func(size): print("Saved %d bytes" % size))
@@ -340,7 +386,8 @@ See `examples/hello_horizon/README.md` for details.
 `crash_reporting_example.gd`, `user_logs_example.gd`,
 `remote_config_example.gd`, `news_example.gd`,
 `email_sending_example.gd`, `gift_codes_example.gd`,
-`feedback_example.gd`, `player_profile_example.gd`). Each shows the minimal flow for that feature
+`feedback_example.gd`, `player_profile_example.gd`,
+`validated_actions_example.gd`). Each shows the minimal flow for that feature
 with error handling. Attach a script to a `Node` and run the scene to
 try it. See `examples/features/README.md` for the run steps.
 
@@ -400,6 +447,16 @@ profile.frameId      # Frame ID ("" = not set)
 profile.badges       # Array[String], 0 to 3, order kept
 profile.hasAvatar()  # True if avatarId is set
 profile.hasFrame()   # True if frameId is set
+```
+
+### Validated Actions models
+`Horizon.validatedActions` returns Dictionaries built by these null safe models
+(JSON `null` becomes "", 0 or an empty object):
+```gdscript
+HorizonValidatedRun           # runId, ticket, seed, leaderboardKey ("" = unbound), issuedAt, expiresAt, expiresInSeconds
+HorizonValidatedSubmitResult  # accepted, runId, leaderboardKey, score, bestScore, isNewHighScore, rank, durationSeconds, state, evidence
+HorizonValidatedPlayerState   # day, values, getBalance(key) (server-owned values, filled from Part 2 on)
+HorizonValidatedEvidenceRequest # required, runId, uploadBefore, maxBytes (filled from Part 3 on)
 ```
 
 ### HorizonNewsEntry

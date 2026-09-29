@@ -20,6 +20,7 @@ feature's signals and return values.
 | Gift Codes | `gift_codes_example.gd` |
 | Feedback | `feedback_example.gd` |
 | Player Profile | `player_profile_example.gd` |
+| Validated Actions | `validated_actions_example.gd` |
 
 ## How to run an example
 

@@ -50,6 +50,7 @@ var localization: HorizonLocalization
 var news: HorizonNews
 var giftCodes: HorizonGiftCodes
 var playerProfile: HorizonPlayerProfile
+var validatedActions: HorizonValidatedActions
 var feedback: HorizonFeedback
 var userLogs: HorizonUserLogs
 var crashes: HorizonCrashes
@@ -142,6 +143,11 @@ func _initializeManagers() -> void:
 	# Leaderboard
 	leaderboard = HorizonLeaderboard.new()
 	leaderboard.initialize(_http, _logger, auth)
+
+	# Validated Actions (clears the leaderboard cache after an accepted board run)
+	validatedActions = HorizonValidatedActions.new()
+	validatedActions.initialize(_http, _logger, auth)
+	validatedActions.setLeaderboard(leaderboard)
 
 	# Cloud Save
 	cloudSave = HorizonCloudSave.new()

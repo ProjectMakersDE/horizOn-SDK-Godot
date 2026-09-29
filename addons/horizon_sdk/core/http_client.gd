@@ -371,6 +371,18 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 					retryAfter = float(header.split(":")[1].strip_edges())
 					break
 			rate_limited.emit(retryAfter)
+			# A 429 whose body carries a `code` is a feature limit (e.g. RUN_RATE_LIMITED,
+			# RUN_CAPACITY_REACHED), not the transient account request limit (empty body).
+			# The wait can be an hour, so fail at once and let the game decide.
+			var limitBody := body.get_string_from_utf8()
+			var limitCode := _parseServerErrorCode(limitBody)
+			if not limitCode.is_empty():
+				var limitMsg := _parseErrorMessage(limitBody, responseCode)
+				_logger.error("Request failed: %s %s - %s [%s, retry after %.0f s]" % [_methodName(method), url, limitMsg, limitCode, retryAfter])
+				request_failed.emit(url, limitMsg)
+				var limited := HorizonNetworkResponse.failure(limitMsg, responseCode, HorizonErrorCodes.ErrorCode.API_RATE_LIMITED)
+				limited.serverCode = limitCode
+				return limited
 			if attemptCount < maxAttempts:
 				_logger.warning("Rate limited. Retrying after %.1f seconds..." % retryAfter)
 				await get_tree().create_timer(retryAfter).timeout
