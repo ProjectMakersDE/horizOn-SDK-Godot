@@ -61,6 +61,8 @@ func validate(code: String) -> Variant:
 
 
 ## Redeem a gift code to receive rewards.
+## The request carries the signed-in player's session (Authorization: Bearer).
+## The server only redeems codes for the player who owns that session.
 ## @param code The gift code to redeem
 ## @return RedeemResult dictionary with success, message, and giftData, or null on error
 func redeem(code: String) -> Dictionary:
@@ -69,7 +71,7 @@ func redeem(code: String) -> Dictionary:
 		code_redeem_failed.emit(code, "Gift code is required")
 		return {}
 
-	if not _auth.isSignedIn():
+	if not _auth.isSignedIn() or _http.sessionToken.is_empty():
 		_logger.error("User must be signed in to redeem gift code")
 		code_redeem_failed.emit(code, "User must be signed in")
 		return {}
@@ -81,7 +83,7 @@ func redeem(code: String) -> Dictionary:
 		"userId": user.userId
 	}
 
-	var response := await _http.postAsync("/api/v1/app/gift-codes/redeem", request)
+	var response := await _http.postAsync("/api/v1/app/gift-codes/redeem", request, true)
 
 	if response.isSuccess and response.data is Dictionary:
 		var success: bool = response.data.get("success", false)
