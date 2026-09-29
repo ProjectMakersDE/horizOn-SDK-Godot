@@ -21,7 +21,7 @@ jobs:
           use-dotnet: false
           include-templates: false
 
-      - name: Run headless leaderboard transport test
+      - name: Run headless transport contract tests
         run: bash tests/run_transport_tests.sh
 
   release:

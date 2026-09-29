@@ -4,6 +4,8 @@ import os
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+from mock_http import report_rejection, send_json
+
 
 EXPECTED_PATH = "/api/v1/app/gift-codes/redeem"
 EXPECTED_BODY = {
@@ -42,17 +44,12 @@ class ContractHandler(BaseHTTPRequestHandler):
             self._reject(", ".join(mismatches))
             return
 
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(json.dumps({"success": True, "message": "ok", "giftData": "{}"}).encode())
+        send_json(self, 200, {"success": True, "message": "ok", "giftData": "{}"})
 
     def _reject(self, message):
         type(self).failure = message
-        self.send_response(422)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(json.dumps({"message": message}).encode())
+        report_rejection(message)
+        send_json(self, 422, {"message": message})
 
     def log_message(self, *_args):
         return

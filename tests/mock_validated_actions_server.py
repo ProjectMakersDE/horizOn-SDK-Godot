@@ -45,6 +45,8 @@ import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 
+from mock_http import report_rejection, send_json
+
 
 PORT = 18883
 API_KEY = "project-key-883"
@@ -410,19 +412,12 @@ class ContractHandler(BaseHTTPRequestHandler):
             self._reject(f"request {index + 1} ({exp_method} {exp_path}): " + ", ".join(mismatches))
             return
 
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        for name, value in headers.items():
-            self.send_header(name, value)
-        self.end_headers()
-        self.wfile.write(json.dumps(response).encode())
+        send_json(self, status, response, headers)
 
     def _reject(self, message):
         type(self).failure = message
-        self.send_response(400)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(json.dumps({"message": message}).encode())
+        report_rejection(message)
+        send_json(self, 400, {"message": message})
 
     def log_message(self, *_args):
         return
