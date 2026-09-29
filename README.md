@@ -216,6 +216,8 @@ for entry in news:
 
 ### Gift Codes
 
+`redeem` needs a signed-in player and sends the player session (`Authorization: Bearer`). The server only redeems codes for the player who owns that session.
+
 ```gdscript
 var isValid = await Horizon.giftCodes.validate("ABCD-1234")
 var result = await Horizon.giftCodes.redeem("ABCD-1234")

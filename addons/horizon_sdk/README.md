@@ -204,6 +204,8 @@ Horizon.news.clearCache()
 
 ### Gift Codes (Horizon.giftCodes)
 
+`redeem` needs a signed-in player and sends the player session (`Authorization: Bearer`). The server only redeems codes for the player who owns that session.
+
 ```gdscript
 # Validate a code
 var isValid = await Horizon.giftCodes.validate("ABCD-1234")
