@@ -313,15 +313,30 @@ func _afterAccepted(result: HorizonValidatedSubmitResult, _input_log: PackedByte
 		_leaderboard.clearCache()
 
 
-## A submit failure after which the ticket is used up: every 422 (ticket
-## and rule rejections) and 403 SCORE_LIMIT_REACHED. Network errors, 400,
-## 401, other 403, 404, 429 and 503 keep the run so the game may retry.
+## A submit failure after which the ticket is used up. Follows the order of
+## checks of the server (ValidatedSubmitService):
+## 1. Ticket decryption and claims (TICKET_INVALID, TICKET_FOREIGN,
+##    TICKET_EXPIRED, all 422): the ticket can never pass, the run ends.
+## 2. Player, board, score and name (PLAYER_NOT_FOUND, LEADERBOARD_NOT_FOUND,
+##    LEADERBOARD_MISMATCH, SCORE_REQUIRED, PLAYER_NAME_REQUIRED): checked
+##    before the ticket is consumed, the run stays so the game may fix the
+##    request and submit again with the same ticket.
+## 3. Rules and value checks (422, e.g. DURATION_TOO_SHORT,
+##    INSUFFICIENT_BALANCE) and the consumption itself (TICKET_CONSUMED,
+##    TICKET_INVALID when the record is gone): the ticket is consumed, the
+##    run ends.
+## 4. 403 SCORE_LIMIT_REACHED comes after the consumption: the run ends.
+## So every 422 except LEADERBOARD_MISMATCH ends the run, plus 403
+## SCORE_LIMIT_REACHED. Network errors, 400, 401, other 403, 404, 429 and
+## 5xx keep the run.
 func _isFinalRejection(response: HorizonNetworkResponse) -> bool:
 	if response.isSuccess:
 		return false
 	if response.statusCode == 422:
-		return true
-	return response.serverCode == ERROR_SCORE_LIMIT_REACHED
+		return response.serverCode != ERROR_LEADERBOARD_MISMATCH
+	if response.statusCode == 403:
+		return response.serverCode == ERROR_SCORE_LIMIT_REACHED
+	return false
 
 
 ## Keep only well formed earned entries: {"key": String, "amount": int}.

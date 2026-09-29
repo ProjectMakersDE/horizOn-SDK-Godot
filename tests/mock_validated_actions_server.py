@@ -12,6 +12,9 @@ Expects exactly these requests, in this order, then no further request:
 8.  POST /api/v1/app/validated-actions/submit  (same ticket again, answered 403 SCORE_LIMIT_REACHED)
 9.  POST /api/v1/app/leaderboards/weekly/submit (answered 403 VALIDATED_SUBMIT_REQUIRED)
 10. GET  /api/v1/app/leaderboards               (boards with and without validatedOnly)
+11. POST /api/v1/app/validated-actions/runs    (bound to "weekly", answered with a fourth run)
+12. POST /api/v1/app/validated-actions/submit  (board "monthly", answered 422 LEADERBOARD_MISMATCH, run kept)
+13. POST /api/v1/app/validated-actions/submit  (same ticket, no board, answered 422 TICKET_EXPIRED, run cleared)
 Every request carries X-API-Key; all but the board list carry the player's Bearer session.
 """
 import json
@@ -134,6 +137,28 @@ EXPECTED = [
             {"boardKey": "weekly", "name": "Weekly", "validatedOnly": True},
             {"boardKey": "default", "name": "Default"},
         ]},
+    ),
+    (
+        "POST", RUNS_PATH, True,
+        {"userId": USER_ID, "leaderboardKey": "weekly"},
+        200, {}, run_body("run-4", "hzn-rt1:2026-09:ticket-four", 99, "weekly"),
+    ),
+    (
+        "POST", SUBMIT_PATH, True,
+        {"userId": USER_ID, "ticket": "hzn-rt1:2026-09:ticket-four", "inputLogHash": LOG_HASH,
+         "score": 700, "leaderboardKey": "monthly"},
+        422, {},
+        error_body(422, "Unprocessable Entity", "LEADERBOARD_MISMATCH",
+                   "The run ticket was started for another leaderboard", SUBMIT_PATH, "run-4"),
+    ),
+    (
+        "POST", SUBMIT_PATH, True,
+        # The same ticket again: LEADERBOARD_MISMATCH did not consume it.
+        {"userId": USER_ID, "ticket": "hzn-rt1:2026-09:ticket-four", "inputLogHash": LOG_HASH,
+         "score": 700},
+        422, {},
+        error_body(422, "Unprocessable Entity", "TICKET_EXPIRED",
+                   "The run ticket has expired", SUBMIT_PATH, "run-4"),
     ),
 ]
 

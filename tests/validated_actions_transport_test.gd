@@ -138,6 +138,25 @@ func _run() -> void:
 		_fail("listBoards must expose validatedOnly (false when missing)")
 		return
 
+	# 11. to 13. LEADERBOARD_MISMATCH is checked before the ticket is consumed:
+	# the run stays and the same ticket is sent again. A ticket code ends it.
+	run = await validated.startRun("weekly")
+	if run.is_empty():
+		_fail("startRun for the mismatch check was rejected: %s" % validated.getLastErrorCode())
+		return
+	if not (await validated.submitValidated(700, input_log, "", "monthly")).is_empty() or validated.getLastErrorCode() != "LEADERBOARD_MISMATCH":
+		_fail("a 422 LEADERBOARD_MISMATCH must fail with that code")
+		return
+	if not validated.hasActiveRun() or validated.getCurrentRun()["ticket"] != "hzn-rt1:2026-09:ticket-four":
+		_fail("LEADERBOARD_MISMATCH must keep the current run (the ticket is not consumed)")
+		return
+	if not (await validated.submitValidated(700, input_log)).is_empty() or validated.getLastErrorCode() != "TICKET_EXPIRED":
+		_fail("a 422 TICKET_EXPIRED must fail with that code")
+		return
+	if validated.hasActiveRun():
+		_fail("a 422 TICKET_EXPIRED must clear the current run")
+		return
+
 	# Player changes drop the run: sign-out, and sign-in of another player.
 	validated._currentRun = {"runId": "local", "ticket": "local"}
 	validated._currentRunUserId = "user-883"
