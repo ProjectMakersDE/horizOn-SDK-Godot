@@ -290,11 +290,11 @@ Horizon.validatedActions.getCurrentRun()  # the run, {} when none
 Horizon.validatedActions.discardRun()     # drop it without submitting
 ```
 
-A ticket is single use. After an accepted run, a `422` rejection (ticket and rule codes) and `403 SCORE_LIMIT_REACHED` the current run is cleared. `LEADERBOARD_MISMATCH` (`422`), `LEADERBOARD_NOT_FOUND` (`404`), `SCORE_REQUIRED` and `PLAYER_NAME_REQUIRED` (`400`) are checked before the server consumes the ticket, so the run stays and you may fix the request and submit again with the same ticket. After network errors, `401`, `429` and `503` it stays as well. A new ticket needs a new `startRun()`. Sign-out also clears the run. After an accepted board run the leaderboard cache is cleared.
+A ticket is single use. After an accepted run, a `422` rejection (ticket and rule codes) and `403 SCORE_LIMIT_REACHED` the current run is cleared. `LEADERBOARD_MISMATCH` (`422`), `LEADERBOARD_NOT_FOUND` (`404`), `SCORE_REQUIRED` and `PLAYER_NAME_REQUIRED` (`400`) are checked before the server consumes the ticket, so the run stays and you may fix the request and submit again with the same ticket. After network errors, `401`, `429` and `503` it stays as well, and after `403 PLAYER_BANNED` (checked before the ticket is used; call `discardRun()` to give the run up). A new ticket needs a new `startRun()`. Sign-out also clears the run. After an accepted board run the leaderboard cache is cleared.
 
-Error codes from `getLastErrorCode()` and the `*_failed` signals: local `SESSION_REQUIRED`, `NO_ACTIVE_RUN`, `INVALID_INPUT_LOG_HASH`; ticket `TICKET_INVALID`, `TICKET_EXPIRED`, `TICKET_FOREIGN`, `TICKET_CONSUMED`, `LEADERBOARD_MISMATCH`; rules `STAGE_REQUIRED`, `STAGE_UNKNOWN`, `SCORE_ABOVE_MAX`, `SCORE_BELOW_MIN`, `STAGE_SCORE_ABOVE_MAX`, `STAGE_SCORE_BELOW_MIN`, `DURATION_TOO_SHORT`, `SCORE_RATE_TOO_HIGH`; values `UNKNOWN_VALUE_KEY`, `DUPLICATE_VALUE_KEY`, `EARNED_ABOVE_MAX`, `EARNED_BELOW_MIN`, `INSUFFICIENT_BALANCE`; others `SCORE_REQUIRED`, `PLAYER_NAME_REQUIRED`, `SCORE_LIMIT_REACHED`, `SESSION_FORBIDDEN`, `PLAYER_NOT_FOUND`, `LEADERBOARD_NOT_FOUND`, `RUN_RATE_LIMITED` and `RUN_CAPACITY_REACHED` (`429`, not retried automatically, the wait can be an hour), `VALIDATED_ACTIONS_UNAVAILABLE`, `NOT_SUPPORTED`. Without a server code the SDK error name is used (for example `NETWORK_ERROR`).
+Error codes from `getLastErrorCode()` and the `*_failed` signals: local `SESSION_REQUIRED`, `NO_ACTIVE_RUN`, `INVALID_INPUT_LOG_HASH`; ticket `TICKET_INVALID`, `TICKET_EXPIRED`, `TICKET_FOREIGN`, `TICKET_CONSUMED`, `LEADERBOARD_MISMATCH`; rules `STAGE_REQUIRED`, `STAGE_UNKNOWN`, `SCORE_ABOVE_MAX`, `SCORE_BELOW_MIN`, `STAGE_SCORE_ABOVE_MAX`, `STAGE_SCORE_BELOW_MIN`, `DURATION_TOO_SHORT`, `SCORE_RATE_TOO_HIGH`; values `UNKNOWN_VALUE_KEY`, `DUPLICATE_VALUE_KEY`, `EARNED_ABOVE_MAX`, `EARNED_BELOW_MIN`, `INSUFFICIENT_BALANCE`; others `SCORE_REQUIRED`, `PLAYER_NAME_REQUIRED`, `SCORE_LIMIT_REACHED`, `SESSION_FORBIDDEN`, `PLAYER_NOT_FOUND`, `LEADERBOARD_NOT_FOUND`, `RUN_RATE_LIMITED` and `RUN_CAPACITY_REACHED` (`429`, not retried automatically, the wait can be an hour), `VALIDATED_ACTIONS_UNAVAILABLE`, `PLAYER_BANNED` (`403`, the account banned the player from the board), `NOT_SUPPORTED`. Without a server code the SDK error name is used (for example `NETWORK_ERROR`).
 
-A leaderboard with **Validated submissions only** (`validatedOnly: true` in `listBoards()`) refuses `submitScore()`: it returns `false` and `Horizon.leaderboard.getLastErrorCode()` is `VALIDATED_SUBMIT_REQUIRED`.
+A leaderboard with **Validated submissions only** (`validatedOnly: true` in `listBoards()`) refuses `submitScore()`: it returns `false` and `Horizon.leaderboard.getLastErrorCode()` is `VALIDATED_SUBMIT_REQUIRED`. A player the account banned from a board gets `PLAYER_BANNED` from `submitScore()` and from the validated submit; neither is retried.
 
 #### Server-owned player state
 
@@ -327,6 +327,32 @@ if not result.is_empty():
 4. Values earned offline go into `earned` of the next validated run, where the per run and daily limits apply as usual.
 
 See `examples/features/validated_state_example.gd`.
+
+#### Evidence (input log upload)
+
+The server may ask for the input log of an accepted run, so the account can replay it in the Dashboard: when the run became the player's entry on a board and lands in the top `evidenceTopN` of that board, or carries a soft rule flag. The result then has `evidence` = `{required: true, runId, uploadBefore (24 h), maxBytes (32,768)}`; otherwise `required` is `false`.
+
+```gdscript
+Horizon.validatedActions.evidence_uploaded.connect(func(run_id): print("Evidence stored for %s" % run_id))
+Horizon.validatedActions.evidence_upload_failed.connect(func(run_id, error, code): print("Evidence [%s]: %s" % [code, error]))
+
+# submitValidated() knows the bytes: the SDK uploads them in the background
+var result: Dictionary = await Horizon.validatedActions.submitValidated(18250, input_log)
+
+# submitValidatedWithHash() does not: upload the same bytes yourself
+result = await Horizon.validatedActions.submitValidatedWithHash(18250, hash_hex)
+if not result.is_empty() and result["evidence"]["required"]:
+    var ok: bool = await Horizon.validatedActions.uploadEvidence(result["evidence"]["runId"], input_log)
+    if not ok and HorizonValidatedActions.isEvidenceRetryable(Horizon.validatedActions.getLastErrorCode()):
+        pass  # wrong bytes or network error: try again before result["evidence"]["uploadBefore"]
+```
+
+- The automatic upload (`auto_upload_evidence`, default `true`) starts after an accepted `submitValidated()` whose result requests evidence. It is not awaited: `submitValidated()` returns the result right away, and the upload reports only through `evidence_uploaded(run_id)` and `evidence_upload_failed(run_id, error, code)`. It never changes the submit result or `getLastErrorCode()`. Set `auto_upload_evidence = false` to upload yourself.
+- `uploadEvidence(run_id, input_log)` sends `PUT /api/v1/app/validated-actions/runs/{runId}/evidence` with `{userId, log}` (standard base64 of the bytes) and the player session, and returns `true` when stored. It sets `getLastErrorCode()`. `getLastEvidenceErrorCode()` holds the code of the last upload of either kind.
+- The bytes must be exactly those whose SHA-256 was submitted. Codes: local `SESSION_REQUIRED`, `INVALID_RUN_ID`, `EMPTY_INPUT_LOG`, and `EVIDENCE_TOO_LARGE` when the automatic upload sees a log above `maxBytes` (nothing is sent); server `EVIDENCE_HASH_MISMATCH` (`422`, the request stays open), `EVIDENCE_INVALID_ENCODING` (`400`), `EVIDENCE_NOT_REQUESTED` (`404`), `EVIDENCE_ALREADY_UPLOADED` (`409`), `EVIDENCE_EXPIRED` (`410`, the 24 h window passed), `EVIDENCE_TOO_LARGE` (`413`).
+- Retry only after `EVIDENCE_HASH_MISMATCH` (with the correct bytes) or `NETWORK_ERROR`: `HorizonValidatedActions.isEvidenceRetryable(code)`. Every other code is final. An upload failure never affects the accepted score.
+
+See `examples/features/validated_evidence_example.gd`.
 
 ### Feedback
 
@@ -452,6 +478,8 @@ Horizon.validatedActions.run_submitted.connect(func(result): print("Accepted, ra
 Horizon.validatedActions.run_submit_failed.connect(func(error, code): print("Rejected [%s]: %s" % [code, error]))
 Horizon.validatedActions.state_loaded.connect(func(state): print("Values: %d" % state["values"].size()))
 Horizon.validatedActions.state_load_failed.connect(func(error, code): print("State failed [%s]: %s" % [code, error]))
+Horizon.validatedActions.evidence_uploaded.connect(func(run_id): print("Evidence uploaded: %s" % run_id))
+Horizon.validatedActions.evidence_upload_failed.connect(func(run_id, error, code): print("Evidence failed [%s]: %s" % [code, error]))
 
 # Cloud Save
 Horizon.cloudSave.data_saved.connect(func(size): print("Saved %d bytes" % size))
@@ -564,7 +592,7 @@ addons/horizon_sdk/
 │   ├── news.gd             # News
 │   ├── gift_codes.gd       # Gift codes
 │   ├── player_profile.gd   # Player profile (avatar, frame, badges)
-│   ├── validated_actions.gd # Validated runs (tickets, submit, hash helper, player state)
+│   ├── validated_actions.gd # Validated runs (tickets, submit, hash helper, player state, evidence)
 │   ├── feedback.gd         # Feedback
 │   ├── user_logs.gd        # User logs
 │   ├── crashes.gd          # Crash reporting

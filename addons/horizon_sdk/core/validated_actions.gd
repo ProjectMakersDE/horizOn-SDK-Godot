@@ -12,8 +12,11 @@
 ## Part 2 (TASK-887): server-owned player state. `earned` of a submit
 ## credits or spends values, getState() reads them, the submit result
 ## carries the `state` after the run, getCurrentState() caches it.
-## Part 3 (TASK-888) adds uploadEvidence() and the automatic upload
-## in _afterAccepted(). See the "PART 2" and "PART 3" markers below.
+## Part 3 (TASK-888): evidence. When the submit result carries
+## `evidence.required`, the raw input log is uploaded (automatically
+## after submitValidated(), by hand with uploadEvidence() after
+## submitValidatedWithHash()). A player banned from the board gets
+## 403 PLAYER_BANNED. See the "PART 2" and "PART 3" markers below.
 ## ============================================================
 class_name HorizonValidatedActions
 extends RefCounted
@@ -28,10 +31,16 @@ signal run_submit_failed(error: String, code: String)
 signal state_loaded(state: Dictionary)
 signal state_load_failed(error: String, code: String)
 
+## Signals (Part 3)
+signal evidence_uploaded(run_id: String)
+signal evidence_upload_failed(run_id: String, error: String, code: String)
+
 ## Endpoints
 const ENDPOINT_RUNS := "/api/v1/app/validated-actions/runs"
 const ENDPOINT_SUBMIT := "/api/v1/app/validated-actions/submit"
 const ENDPOINT_STATE := "/api/v1/app/validated-actions/state"
+## Evidence upload, %s is the run ID: PUT /api/v1/app/validated-actions/runs/{runId}/evidence
+const ENDPOINT_EVIDENCE := "/api/v1/app/validated-actions/runs/%s/evidence"
 
 ## Length of a SHA-256 hex digest
 const INPUT_LOG_HASH_LENGTH := 64
@@ -43,6 +52,10 @@ const ERROR_NO_ACTIVE_RUN := "NO_ACTIVE_RUN"
 const ERROR_INVALID_INPUT_LOG_HASH := "INVALID_INPUT_LOG_HASH"
 ## A 404 without `code`: the backend has no Validated Actions (e.g. simpleServer)
 const ERROR_NOT_SUPPORTED := "NOT_SUPPORTED"
+## uploadEvidence() without a run ID
+const ERROR_INVALID_RUN_ID := "INVALID_RUN_ID"
+## uploadEvidence() with an empty log (the server requires a non-empty `log`)
+const ERROR_EMPTY_INPUT_LOG := "EMPTY_INPUT_LOG"
 
 ## Server error codes (`code` of the error body), Part 1
 const ERROR_SESSION_FORBIDDEN := "SESSION_FORBIDDEN"
@@ -82,11 +95,30 @@ const ERROR_EARNED_BELOW_MIN := "EARNED_BELOW_MIN"
 ## A spend larger than the balance
 const ERROR_INSUFFICIENT_BALANCE := "INSUFFICIENT_BALANCE"
 
+## Server error codes, Part 3
+## 403 on both submit paths: the player is banned from the target board.
+## The validated submit checks it before the ticket is consumed, so the run stays.
+const ERROR_PLAYER_BANNED := "PLAYER_BANNED"
+## 400: `log` is not standard base64 (final)
+const ERROR_EVIDENCE_INVALID_ENCODING := "EVIDENCE_INVALID_ENCODING"
+## 404: no evidence request for this run and player (final)
+const ERROR_EVIDENCE_NOT_REQUESTED := "EVIDENCE_NOT_REQUESTED"
+## 409: the log of this run is already stored (final)
+const ERROR_EVIDENCE_ALREADY_UPLOADED := "EVIDENCE_ALREADY_UPLOADED"
+## 410: the upload window (24 h) has passed (final)
+const ERROR_EVIDENCE_EXPIRED := "EVIDENCE_EXPIRED"
+## 413: the decoded log is larger than `evidence.maxBytes` (final)
+const ERROR_EVIDENCE_TOO_LARGE := "EVIDENCE_TOO_LARGE"
+## 422: SHA-256 of the log differs from the run's inputLogHash. The request
+## stays open until the window ends: upload the correct bytes again.
+const ERROR_EVIDENCE_HASH_MISMATCH := "EVIDENCE_HASH_MISMATCH"
+
 ## Most `earned` entries the server takes per run (more is a 400)
 const MAX_EARNED_ENTRIES := 64
 
-## Used from Part 3 on: upload the input log right away when a submit
-## result requests evidence and the log bytes are known.
+## Upload the input log right away when a submit result requests evidence
+## (`evidence.required`) and the raw log bytes are known, i.e. after
+## submitValidated(). Off: call uploadEvidence() yourself.
 var auto_upload_evidence: bool = true
 
 ## Dependencies
@@ -99,6 +131,8 @@ var _leaderboard: HorizonLeaderboard
 var _currentRun: Dictionary = {}
 var _currentRunUserId: String = ""
 var _lastErrorCode: String = ""
+## Code of the last evidence upload, automatic or manual (Part 3)
+var _lastEvidenceErrorCode: String = ""
 ## Last known server-owned state (Part 2), null until loaded
 var _currentState: HorizonValidatedPlayerState = null
 
@@ -299,8 +333,41 @@ func getBalance(key: String) -> int:
 
 
 # ===== PART 3: EVIDENCE (TASK-888) =====
-# uploadEvidence(run_id, input_log), signals evidence_uploaded /
-# evidence_upload_failed. The automatic upload belongs in _afterAccepted().
+
+## Upload the raw input log of a run whose submit result requested evidence
+## (`evidence.required`). Needed after submitValidatedWithHash() or with
+## auto_upload_evidence off; submitValidated() uploads on its own.
+## Sends PUT /api/v1/app/validated-actions/runs/{runId}/evidence with
+## {"userId", "log"} (standard base64 of the bytes). The server compares the
+## SHA-256 of the bytes with the hash sent at the submit.
+## Retry only after EVIDENCE_HASH_MISMATCH (with the correct bytes) or a
+## network error, see isEvidenceRetryable(); the other codes are final.
+## @param run_id Run ID, from result["evidence"]["runId"]
+## @param input_log The exact bytes whose hash was submitted
+## @return True when the log was stored. On false getLastErrorCode() is set
+##         (local SESSION_REQUIRED, INVALID_RUN_ID, EMPTY_INPUT_LOG or a
+##         server code such as EVIDENCE_EXPIRED).
+func uploadEvidence(run_id: String, input_log: PackedByteArray) -> bool:
+	return await _uploadEvidence(run_id, input_log, true)
+
+
+## Error code of the last evidence upload, automatic or manual: a server
+## code (e.g. "EVIDENCE_EXPIRED"), a local code (SESSION_REQUIRED,
+## INVALID_RUN_ID, EMPTY_INPUT_LOG, or EVIDENCE_TOO_LARGE when the automatic
+## upload saw a log above `evidence.maxBytes` and sent nothing) or the SDK
+## error name (e.g. "NETWORK_ERROR").
+## @return The code, or "" after a successful upload (or before any)
+func getLastEvidenceErrorCode() -> String:
+	return _lastEvidenceErrorCode
+
+
+## Check whether an evidence upload may be tried again: after
+## EVIDENCE_HASH_MISMATCH (with the correct bytes, the request stays open)
+## and after a network error. Every other code is final.
+## @param code Error code from evidence_upload_failed or getLastErrorCode()
+## @return True when a new upload can succeed
+static func isEvidenceRetryable(code: String) -> bool:
+	return code == ERROR_EVIDENCE_HASH_MISMATCH or code == "NETWORK_ERROR"
 
 
 # ===== INTERNAL =====
@@ -405,12 +472,59 @@ func _endRun(sent_ticket: String) -> void:
 		discardRun()
 
 
-## Work after an accepted run: clear the leaderboard cache for a board run.
-## PART 3: start the evidence upload here when result.evidence.required,
-## has_log and auto_upload_evidence are true.
-func _afterAccepted(result: HorizonValidatedSubmitResult, _input_log: PackedByteArray, _has_log: bool) -> void:
+## Work after an accepted run: clear the leaderboard cache for a board run
+## and start the evidence upload when the server requests the log, the raw
+## bytes are known (submitValidated()) and auto_upload_evidence is on.
+## The upload is not awaited: the submit result is returned and emitted
+## right away, the upload reports through the evidence signals only.
+func _afterAccepted(result: HorizonValidatedSubmitResult, input_log: PackedByteArray, has_log: bool) -> void:
 	if result.hasLeaderboard() and _leaderboard != null:
 		_leaderboard.clearCache()
+	if not result.evidence.required:
+		return
+	var evidenceRunId := result.evidence.runId if not result.evidence.runId.is_empty() else result.runId
+	if not has_log:
+		_logger.info("Validated run %s: evidence requested until %s, upload the log with uploadEvidence()" % [evidenceRunId, result.evidence.uploadBefore])
+		return
+	if not auto_upload_evidence:
+		_logger.info("Validated run %s: evidence requested until %s, auto upload is off" % [evidenceRunId, result.evidence.uploadBefore])
+		return
+	if result.evidence.maxBytes > 0 and input_log.size() > result.evidence.maxBytes:
+		# The server would answer 413; do not send the bytes.
+		_failEvidence(evidenceRunId, "The input log has %d bytes, the server accepts at most %d" % [input_log.size(), result.evidence.maxBytes], ERROR_EVIDENCE_TOO_LARGE, false)
+		return
+	# Not awaited on purpose (runs in the background).
+	_uploadEvidence(evidenceRunId, input_log, false)
+
+
+## Send one evidence upload.
+## @param manual True for uploadEvidence(): the outcome sets getLastErrorCode().
+##        The automatic upload leaves it alone, so the code of the submit stays.
+func _uploadEvidence(run_id: String, input_log: PackedByteArray, manual: bool) -> bool:
+	var runId := run_id.strip_edges()
+	if not _hasSession():
+		return _failEvidence(runId, "User must be signed in to upload evidence", ERROR_SESSION_REQUIRED, manual)
+	if runId.is_empty():
+		return _failEvidence(runId, "The run ID is required to upload evidence", ERROR_INVALID_RUN_ID, manual)
+	if input_log.is_empty():
+		return _failEvidence(runId, "The input log is empty", ERROR_EMPTY_INPUT_LOG, manual)
+
+	var request := {
+		"userId": _auth.getCurrentUser().userId,
+		# Standard base64 with padding, as the server decodes it.
+		"log": Marshalls.raw_to_base64(input_log)
+	}
+	var response := await _http.putAsync(ENDPOINT_EVIDENCE % runId.uri_encode(), request, true)
+
+	if response.isSuccess and response.data is Dictionary:
+		if manual:
+			_lastErrorCode = ""
+		_lastEvidenceErrorCode = ""
+		_logger.info("Validated run %s: evidence uploaded (%d bytes)" % [runId, input_log.size()])
+		evidence_uploaded.emit(runId)
+		return true
+
+	return _failEvidence(runId, _errorMessage(response, "Failed to upload evidence"), _errorCodeOf(response), manual)
 
 
 ## A submit failure after which the ticket is used up. Follows the order of
@@ -426,9 +540,12 @@ func _afterAccepted(result: HorizonValidatedSubmitResult, _input_log: PackedByte
 ##    TICKET_INVALID when the record is gone): the ticket is consumed, the
 ##    run ends.
 ## 4. 403 SCORE_LIMIT_REACHED comes after the consumption: the run ends.
+## 5. 403 PLAYER_BANNED (Part 3) is checked before every rule and before the
+##    consumption: the run stays (the same ticket works after an unban);
+##    call discardRun() to give it up.
 ## So every 422 except LEADERBOARD_MISMATCH ends the run, plus 403
-## SCORE_LIMIT_REACHED. Network errors, 400, 401, other 403, 404, 429 and
-## 5xx keep the run.
+## SCORE_LIMIT_REACHED. Network errors, 400, 401, other 403 (PLAYER_BANNED,
+## SESSION_FORBIDDEN), 404, 429 and 5xx keep the run.
 func _isFinalRejection(response: HorizonNetworkResponse) -> bool:
 	if response.isSuccess:
 		return false
@@ -495,6 +612,16 @@ func _failState(message: String, code: String) -> Dictionary:
 	_logger.error("Validated player state load failed [%s]: %s" % [code, message])
 	state_load_failed.emit(message, code)
 	return {}
+
+
+## Record an evidence upload failure, emit evidence_upload_failed and return false.
+func _failEvidence(run_id: String, message: String, code: String, manual: bool) -> bool:
+	if manual:
+		_lastErrorCode = code
+	_lastEvidenceErrorCode = code
+	_logger.error("Validated run %s: evidence upload failed [%s]: %s" % [run_id, code, message])
+	evidence_upload_failed.emit(run_id, message, code)
+	return false
 
 
 ## Record a failure, emit the matching signal and return {}.

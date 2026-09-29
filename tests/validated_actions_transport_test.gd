@@ -236,6 +236,119 @@ func _run() -> void:
 		_fail("a 404 without code on getState must fail with NOT_SUPPORTED")
 		return
 
+	# ----- Part 3: evidence upload and PLAYER_BANNED -----
+	var evidence_events := {"uploaded": [], "failed": []}
+	validated.evidence_uploaded.connect(func(run_id: String): evidence_events["uploaded"].append(run_id))
+	validated.evidence_upload_failed.connect(func(run_id: String, _error: String, code: String): evidence_events["failed"].append([run_id, code]))
+
+	# 21. to 23. submitValidated with the raw log: the result requests evidence
+	# and the SDK uploads the same bytes as base64 in the background.
+	run = await validated.startRun("weekly")
+	if run.is_empty():
+		_fail("startRun for the evidence run was rejected: %s" % validated.getLastErrorCode())
+		return
+	var evidence_result := await validated.submitValidated(900, input_log)
+	if evidence_result.is_empty():
+		_fail("the evidence run was rejected by the contract server: %s" % validated.getLastErrorCode())
+		return
+	var requested: Dictionary = evidence_result["evidence"]
+	if not requested["required"] or requested["runId"] != "run-7" or requested["maxBytes"] != 32768 or requested["uploadBefore"] != "2026-09-30T14:05:12.000Z":
+		_fail("the submit result must map the evidence request")
+		return
+	if not await _waitForEvidence(evidence_events, 1):
+		_fail("the automatic evidence upload did not finish")
+		return
+	if evidence_events["uploaded"] != ["run-7"] or not evidence_events["failed"].is_empty():
+		_fail("the automatic upload must emit evidence_uploaded with the run ID")
+		return
+	if validated.getLastErrorCode() != "" or validated.getLastEvidenceErrorCode() != "":
+		_fail("a successful automatic upload must leave both error codes empty")
+		return
+
+	# 24. + 25. submitValidatedWithHash: the SDK has no bytes, nothing is uploaded.
+	run = await validated.startRun("weekly")
+	if run.is_empty():
+		_fail("startRun for the hash-only evidence run was rejected: %s" % validated.getLastErrorCode())
+		return
+	var hash_result := await validated.submitValidatedWithHash(900, LOG_HASH)
+	if hash_result.is_empty() or not hash_result["evidence"]["required"]:
+		_fail("the hash-only evidence run must be accepted with evidence.required")
+		return
+
+	# 26. Wrong bytes: 422 EVIDENCE_HASH_MISMATCH, retryable.
+	if await validated.uploadEvidence("run-8", "R1:L2:J4".to_utf8_buffer()) or validated.getLastErrorCode() != "EVIDENCE_HASH_MISMATCH":
+		_fail("an upload with the wrong bytes must fail with EVIDENCE_HASH_MISMATCH")
+		return
+	if not HorizonValidatedActions.isEvidenceRetryable(validated.getLastErrorCode()) or evidence_events["failed"].back() != ["run-8", "EVIDENCE_HASH_MISMATCH"]:
+		_fail("EVIDENCE_HASH_MISMATCH must be retryable and emit evidence_upload_failed")
+		return
+	# 27. The correct bytes: stored.
+	if not await validated.uploadEvidence("run-8", input_log) or validated.getLastErrorCode() != "" or evidence_events["uploaded"].back() != "run-8":
+		_fail("an upload with the correct bytes must succeed and emit evidence_uploaded")
+		return
+	# 28. Again: 409 EVIDENCE_ALREADY_UPLOADED, final.
+	if await validated.uploadEvidence("run-8", input_log) or validated.getLastErrorCode() != "EVIDENCE_ALREADY_UPLOADED" or validated.getLastEvidenceErrorCode() != "EVIDENCE_ALREADY_UPLOADED":
+		_fail("a second upload must fail with EVIDENCE_ALREADY_UPLOADED")
+		return
+	if HorizonValidatedActions.isEvidenceRetryable("EVIDENCE_ALREADY_UPLOADED") or HorizonValidatedActions.isEvidenceRetryable("EVIDENCE_EXPIRED") or not HorizonValidatedActions.isEvidenceRetryable("NETWORK_ERROR"):
+		_fail("only EVIDENCE_HASH_MISMATCH and NETWORK_ERROR are retryable")
+		return
+
+	# 29. + 30. PLAYER_BANNED is checked before the ticket is consumed: the run stays.
+	run = await validated.startRun("weekly")
+	if run.is_empty():
+		_fail("startRun for the ban check was rejected: %s" % validated.getLastErrorCode())
+		return
+	if not (await validated.submitValidated(900, input_log)).is_empty() or validated.getLastErrorCode() != "PLAYER_BANNED" or failed["code"] != "PLAYER_BANNED":
+		_fail("a 403 PLAYER_BANNED on the validated submit must fail with that code")
+		return
+	if not validated.hasActiveRun() or validated.getCurrentRun()["ticket"] != "hzn-rt1:2026-09:ticket-nine":
+		_fail("PLAYER_BANNED must keep the current run (the ticket is not consumed)")
+		return
+	# 31. Same ticket after an unban, auto upload off: evidence requested, nothing sent.
+	validated.auto_upload_evidence = false
+	var uploads_before: int = evidence_events["uploaded"].size() + evidence_events["failed"].size()
+	var manual_result := await validated.submitValidated(900, input_log)
+	validated.auto_upload_evidence = true
+	if manual_result.is_empty() or not manual_result["evidence"]["required"] or validated.hasActiveRun():
+		_fail("the submit after the ban must be accepted and end the run")
+		return
+	if evidence_events["uploaded"].size() + evidence_events["failed"].size() != uploads_before:
+		_fail("with auto_upload_evidence off no upload may start")
+		return
+
+	# 32. The plain leaderboard submit exposes PLAYER_BANNED.
+	if await leaderboard.submitScore(999, "weekly") or leaderboard.getLastErrorCode() != "PLAYER_BANNED":
+		_fail("submitScore by a banned player must expose PLAYER_BANNED")
+		return
+
+	# 33. + 34. A log above evidence.maxBytes fails locally, nothing is sent,
+	# and the accepted submit keeps its empty error code.
+	run = await validated.startRun("weekly")
+	if run.is_empty():
+		_fail("startRun for the size check was rejected: %s" % validated.getLastErrorCode())
+		return
+	var large_result := await validated.submitValidated(900, input_log)
+	if large_result.is_empty() or validated.getLastErrorCode() != "":
+		_fail("the size check run must be accepted without an error code")
+		return
+	if evidence_events["failed"].back() != ["run-10", "EVIDENCE_TOO_LARGE"] or validated.getLastEvidenceErrorCode() != "EVIDENCE_TOO_LARGE":
+		_fail("a log above evidence.maxBytes must fail locally with EVIDENCE_TOO_LARGE")
+		return
+
+	# 35. A run without a request: 404 EVIDENCE_NOT_REQUESTED (not NOT_SUPPORTED).
+	if await validated.uploadEvidence("run-unknown", input_log) or validated.getLastErrorCode() != "EVIDENCE_NOT_REQUESTED":
+		_fail("an upload without a request must fail with EVIDENCE_NOT_REQUESTED")
+		return
+
+	# Local evidence checks: no request.
+	if await validated.uploadEvidence("", input_log) or validated.getLastErrorCode() != "INVALID_RUN_ID":
+		_fail("uploadEvidence without a run ID must fail locally with INVALID_RUN_ID")
+		return
+	if await validated.uploadEvidence("run-8", PackedByteArray()) or validated.getLastErrorCode() != "EMPTY_INPUT_LOG":
+		_fail("uploadEvidence with an empty log must fail locally with EMPTY_INPUT_LOG")
+		return
+
 	# Player changes drop the run: sign-out, and sign-in of another player.
 	validated._currentRun = {"runId": "local", "ticket": "local"}
 	validated._currentRunUserId = "user-883"
@@ -266,6 +379,9 @@ func _run() -> void:
 	if not (await validated.getState()).is_empty() or validated.getLastErrorCode() != "SESSION_REQUIRED":
 		_fail("getState without session must fail locally with SESSION_REQUIRED")
 		return
+	if await validated.uploadEvidence("run-8", input_log) or validated.getLastErrorCode() != "SESSION_REQUIRED":
+		_fail("uploadEvidence without session must fail locally with SESSION_REQUIRED")
+		return
 	http.sessionToken = "session-token-883"
 	auth._currentUser.clear()
 	validated._currentRun = {"runId": "local", "ticket": "local"}
@@ -295,6 +411,15 @@ func _run() -> void:
 	print("Godot validated actions transport contract passed")
 	http.queue_free()
 	quit(0)
+
+
+## Wait until at least `count` evidence signals arrived (uploaded or failed), at most 5 s.
+func _waitForEvidence(events: Dictionary, count: int) -> bool:
+	var waited := 0.0
+	while events["uploaded"].size() + events["failed"].size() < count and waited < 5.0:
+		await create_timer(0.05).timeout
+		waited += 0.05
+	return events["uploaded"].size() + events["failed"].size() >= count
 
 
 func _fail(message: String) -> void:

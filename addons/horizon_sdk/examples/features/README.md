@@ -22,6 +22,7 @@ feature's signals and return values.
 | Player Profile | `player_profile_example.gd` |
 | Validated Actions | `validated_actions_example.gd` |
 | Validated Actions: server-owned player state | `validated_state_example.gd` |
+| Validated Actions: evidence upload | `validated_evidence_example.gd` |
 
 ## How to run an example
 
@@ -31,7 +32,7 @@ feature's signals and return values.
 
 Each script's header comment lists what it does and the expected output.
 Some examples need values from your Dashboard, the email, gift code,
-player profile and validated state scripts say what to set up or replace.
+player profile, validated state and validated evidence scripts say what to set up or replace.
 
 For a guided first run that connects, signs in, and submits a score,
 see `../hello_horizon/`.

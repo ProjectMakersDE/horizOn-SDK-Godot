@@ -19,6 +19,10 @@ signal boards_loaded(boards: Array[Dictionary])
 ## takes scores only through Horizon.validatedActions.submitValidated().
 const ERROR_VALIDATED_SUBMIT_REQUIRED := "VALIDATED_SUBMIT_REQUIRED"
 
+## Server code of a submit by a player the account banned from the board
+## (403, nothing is written). Not retried.
+const ERROR_PLAYER_BANNED := "PLAYER_BANNED"
+
 ## Dependencies
 var _http: HorizonHttpClient
 var _logger: HorizonLogger
@@ -66,6 +70,7 @@ func initialize(http: HorizonHttpClient, logger: HorizonLogger, auth: HorizonAut
 ## Score is only updated if it's higher than the previous best.
 ## A board with validatedOnly rejects this call with 403 and
 ## getLastErrorCode() == "VALIDATED_SUBMIT_REQUIRED" (not retried).
+## A player banned from the board gets 403 and "PLAYER_BANNED" (not retried).
 ## @param score Score value (must be positive)
 ## @param board_key Optional board key for multi-board leaderboards
 ## @return True if submission succeeded
@@ -99,6 +104,8 @@ func submitScore(score: int, board_key: String = "") -> bool:
 	_lastErrorCode = _errorCodeOf(response)
 	if _lastErrorCode == ERROR_VALIDATED_SUBMIT_REQUIRED:
 		_logger.error("Score submission refused: board '%s' accepts validated runs only (use Horizon.validatedActions)" % ("default" if normalized_board_key.is_empty() else normalized_board_key))
+	elif _lastErrorCode == ERROR_PLAYER_BANNED:
+		_logger.error("Score submission refused: the player is banned from board '%s'" % ("default" if normalized_board_key.is_empty() else normalized_board_key))
 	else:
 		_logger.error("Score submission failed [%s]: %s" % [_lastErrorCode, response.error])
 	score_submit_failed.emit(response.error)
@@ -106,7 +113,8 @@ func submitScore(score: int, board_key: String = "") -> bool:
 
 
 ## Error code of the last failed submitScore(): the server `code` (e.g.
-## "VALIDATED_SUBMIT_REQUIRED" for a validated only board), "SESSION_REQUIRED"
+## "VALIDATED_SUBMIT_REQUIRED" for a validated only board, "PLAYER_BANNED" for a
+## player banned from the board), "SESSION_REQUIRED"
 ## when nobody is signed in, or the SDK error name derived from the HTTP
 ## status (e.g. "API_RATE_LIMITED", "NETWORK_ERROR").
 ## @return The code, or "" after a successful submit

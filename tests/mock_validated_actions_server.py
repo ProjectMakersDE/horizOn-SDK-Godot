@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contract server for the Godot validated actions transport test (TASK-883).
+"""Contract server for the Godot validated actions transport test (TASK-883, 887, 888).
 
 Expects exactly these requests, in this order, then no further request:
 1.  POST /api/v1/app/validated-actions/runs    (bound to "weekly", answered with a run)
@@ -22,6 +22,21 @@ Expects exactly these requests, in this order, then no further request:
 18. POST /api/v1/app/validated-actions/submit  (spend, answered 422 INSUFFICIENT_BALANCE)
 19. GET  /api/v1/app/validated-actions/state?userId=user-883 (answered 401 SESSION_REQUIRED)
 20. GET  /api/v1/app/validated-actions/state?userId=user-883 (answered 404 without code: NOT_SUPPORTED)
+21. POST /api/v1/app/validated-actions/runs    (Part 3, bound to "weekly", answered with run-7)
+22. POST /api/v1/app/validated-actions/submit  (raw log, answered 200 with evidence.required)
+23. PUT  /api/v1/app/validated-actions/runs/run-7/evidence (automatic upload, base64 log, answered 200)
+24. POST /api/v1/app/validated-actions/runs    (bound to "weekly", answered with run-8)
+25. POST /api/v1/app/validated-actions/submit  (ready hash, evidence.required, no automatic upload)
+26. PUT  /api/v1/app/validated-actions/runs/run-8/evidence (wrong bytes, answered 422 EVIDENCE_HASH_MISMATCH)
+27. PUT  /api/v1/app/validated-actions/runs/run-8/evidence (correct bytes, answered 200)
+28. PUT  /api/v1/app/validated-actions/runs/run-8/evidence (again, answered 409 EVIDENCE_ALREADY_UPLOADED)
+29. POST /api/v1/app/validated-actions/runs    (bound to "weekly", answered with run-9)
+30. POST /api/v1/app/validated-actions/submit  (answered 403 PLAYER_BANNED, run kept)
+31. POST /api/v1/app/validated-actions/submit  (same ticket, evidence.required, auto upload off: no PUT)
+32. POST /api/v1/app/leaderboards/weekly/submit (answered 403 PLAYER_BANNED)
+33. POST /api/v1/app/validated-actions/runs    (bound to "weekly", answered with run-10)
+34. POST /api/v1/app/validated-actions/submit  (evidence.maxBytes 4 below the 8 byte log: no PUT)
+35. PUT  /api/v1/app/validated-actions/runs/run-unknown/evidence (answered 404 EVIDENCE_NOT_REQUESTED)
 Every request carries X-API-Key; all but the board list carry the player's Bearer session.
 """
 import json
@@ -40,6 +55,7 @@ SUBMIT_PATH = "/api/v1/app/validated-actions/submit"
 BOARD_SUBMIT_PATH = "/api/v1/app/leaderboards/weekly/submit"
 BOARDS_PATH = "/api/v1/app/leaderboards"
 STATE_PATH = "/api/v1/app/validated-actions/state?userId=" + USER_ID
+EVIDENCE_PATH = "/api/v1/app/validated-actions/runs/%s/evidence"
 
 # Largest value the server stores (2^53 - 1)
 MAX_SAFE_INT = 9007199254740991
@@ -48,6 +64,9 @@ MAX_SAFE_INT = 9007199254740991
 LOG_HASH = "054a3b937f3f8b4d1d82fe353243cb91288f7975e2190a338e59271f17701375"
 # A ready hash, sent upper case by the test and lower cased by the SDK
 READY_HASH = "a" * 64
+# Standard base64 of b"R1:L2:J3" and of the wrong log b"R1:L2:J4"
+LOG_BASE64 = "UjE6TDI6SjM="
+WRONG_LOG_BASE64 = "UjE6TDI6SjQ="
 
 
 def run_body(run_id, ticket, seed, board):
@@ -59,6 +78,16 @@ def run_body(run_id, ticket, seed, board):
         "issuedAt": "2026-09-29T14:00:00.120Z",
         "expiresAt": "2026-09-29T16:00:00.120Z",
         "expiresInSeconds": 7200,
+    }
+
+
+def evidence_result(run_id, max_bytes=32768):
+    return {
+        "accepted": True, "runId": run_id, "leaderboardKey": "weekly", "score": 900,
+        "bestScore": 900, "isNewHighScore": True, "rank": 1, "durationSeconds": 312,
+        "state": None,
+        "evidence": {"required": True, "runId": run_id,
+                     "uploadBefore": "2026-09-30T14:05:12.000Z", "maxBytes": max_bytes},
     }
 
 
@@ -235,6 +264,98 @@ EXPECTED = [
         "GET", STATE_PATH, True, None,
         404, {}, {"message": "Not Found"},
     ),
+    # ----- Part 3: evidence and PLAYER_BANNED -----
+    (
+        "POST", RUNS_PATH, True,
+        {"userId": USER_ID, "leaderboardKey": "weekly"},
+        200, {}, run_body("run-7", "hzn-rt1:2026-09:ticket-seven", 7, "weekly"),
+    ),
+    (
+        "POST", SUBMIT_PATH, True,
+        {"userId": USER_ID, "ticket": "hzn-rt1:2026-09:ticket-seven", "inputLogHash": LOG_HASH,
+         "score": 900},
+        200, {}, evidence_result("run-7"),
+    ),
+    (
+        "PUT", EVIDENCE_PATH % "run-7", True,
+        {"userId": USER_ID, "log": LOG_BASE64},
+        200, {}, {"runId": "run-7", "status": "UPLOADED", "bytes": 8},
+    ),
+    (
+        "POST", RUNS_PATH, True,
+        {"userId": USER_ID, "leaderboardKey": "weekly"},
+        200, {}, run_body("run-8", "hzn-rt1:2026-09:ticket-eight", 8, "weekly"),
+    ),
+    (
+        "POST", SUBMIT_PATH, True,
+        {"userId": USER_ID, "ticket": "hzn-rt1:2026-09:ticket-eight", "inputLogHash": LOG_HASH,
+         "score": 900},
+        200, {}, evidence_result("run-8"),
+    ),
+    (
+        "PUT", EVIDENCE_PATH % "run-8", True,
+        {"userId": USER_ID, "log": WRONG_LOG_BASE64},
+        422, {},
+        error_body(422, "Unprocessable Entity", "EVIDENCE_HASH_MISMATCH",
+                   "The log does not match the input log hash of the run", EVIDENCE_PATH % "run-8", "run-8"),
+    ),
+    (
+        "PUT", EVIDENCE_PATH % "run-8", True,
+        {"userId": USER_ID, "log": LOG_BASE64},
+        200, {}, {"runId": "run-8", "status": "UPLOADED", "bytes": 8},
+    ),
+    (
+        "PUT", EVIDENCE_PATH % "run-8", True,
+        {"userId": USER_ID, "log": LOG_BASE64},
+        409, {},
+        error_body(409, "Conflict", "EVIDENCE_ALREADY_UPLOADED",
+                   "The log of this run was already uploaded", EVIDENCE_PATH % "run-8", "run-8"),
+    ),
+    (
+        "POST", RUNS_PATH, True,
+        {"userId": USER_ID, "leaderboardKey": "weekly"},
+        200, {}, run_body("run-9", "hzn-rt1:2026-09:ticket-nine", 9, "weekly"),
+    ),
+    (
+        "POST", SUBMIT_PATH, True,
+        {"userId": USER_ID, "ticket": "hzn-rt1:2026-09:ticket-nine", "inputLogHash": LOG_HASH,
+         "score": 900},
+        403, {},
+        error_body(403, "Forbidden", "PLAYER_BANNED",
+                   "The player is banned from this leaderboard", SUBMIT_PATH, "run-9"),
+    ),
+    (
+        "POST", SUBMIT_PATH, True,
+        # The same ticket again: PLAYER_BANNED is checked before the ticket is consumed.
+        {"userId": USER_ID, "ticket": "hzn-rt1:2026-09:ticket-nine", "inputLogHash": LOG_HASH,
+         "score": 900},
+        200, {}, evidence_result("run-9"),
+    ),
+    (
+        "POST", BOARD_SUBMIT_PATH, True,
+        {"userId": USER_ID, "score": 999, "leaderboardKey": "weekly"},
+        403, {},
+        error_body(403, "Forbidden", "PLAYER_BANNED",
+                   "The player is banned from this leaderboard", BOARD_SUBMIT_PATH),
+    ),
+    (
+        "POST", RUNS_PATH, True,
+        {"userId": USER_ID, "leaderboardKey": "weekly"},
+        200, {}, run_body("run-10", "hzn-rt1:2026-09:ticket-ten", 10, "weekly"),
+    ),
+    (
+        "POST", SUBMIT_PATH, True,
+        {"userId": USER_ID, "ticket": "hzn-rt1:2026-09:ticket-ten", "inputLogHash": LOG_HASH,
+         "score": 900},
+        200, {}, evidence_result("run-10", max_bytes=4),
+    ),
+    (
+        "PUT", EVIDENCE_PATH % "run-unknown", True,
+        {"userId": USER_ID, "log": LOG_BASE64},
+        404, {},
+        error_body(404, "Not Found", "EVIDENCE_NOT_REQUESTED",
+                   "No evidence was requested for this run", EVIDENCE_PATH % "run-unknown", "run-unknown"),
+    ),
 ]
 
 
@@ -247,6 +368,9 @@ class ContractHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         self._handle("POST")
+
+    def do_PUT(self):
+        self._handle("PUT")
 
     def _handle(self, method):
         index = type(self).requests_seen
@@ -325,8 +449,9 @@ def main():
         return 1
 
     # Grace period in which the locally rejected calls (no session, no run,
-    # invalid hash) run. None of them may reach the server. (A retried
-    # 429 RUN_RATE_LIMITED would take request 6 and fail the Godot side.)
+    # invalid hash, invalid evidence upload) run. None of them may reach the
+    # server. (A retried 429 RUN_RATE_LIMITED would take request 6 and fail the
+    # Godot side; an unwanted automatic evidence upload would take the next slot.)
     server.timeout = 1.5
     server.handle_request()
     if ContractHandler.requests_seen != len(EXPECTED):
