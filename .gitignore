@@ -29,3 +29,6 @@ Thumbs.db
 
 # Claude
 .claude/
+
+# Python bytecode of the test contract servers
+__pycache__/
