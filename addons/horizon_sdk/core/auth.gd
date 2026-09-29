@@ -38,6 +38,10 @@ const ERROR_NETWORK_ERROR := "NETWORK_ERROR"
 ## Name of the optional iOS singleton exposed by the classic .gdip plugin
 const APPLE_SIGN_IN_SINGLETON := "HorizonAppleSignIn"
 
+## Endpoints
+const ENDPOINT_SIGNUP := "/api/v1/app/user-management/signup"
+const ENDPOINT_SIGNIN := "/api/v1/app/user-management/signin"
+
 ## Cache keys for persistent storage
 const CACHE_KEY_USER_SESSION := "horizOn_UserSession"
 const CACHE_KEY_ANONYMOUS_TOKEN := "horizOn_AnonymousToken"
@@ -76,28 +80,56 @@ func isSignedIn() -> bool:
 # ===== SIGN UP =====
 
 ## Sign up with anonymous authentication.
-## Creates a new anonymous user or signs in if token exists.
+## The server issues the anonymous token: the request carries no token, the
+## SDK stores the token from the response (for restoreAnonymousSession()) and
+## signs in with it when the signup response carries no access token.
 ## @param display_name Optional display name
-## @param anonymous_token Optional existing anonymous token
-## @return True if signup succeeded
+## @param anonymous_token Deprecated and ignored (servers since v1.64.7 reject a
+##        client token with 400). Use signInAnonymous() for an existing token.
+## @return True once the new anonymous user has a session
 func signUpAnonymous(display_name: String = "", anonymous_token: String = "") -> bool:
 	if isSignedIn():
 		_logger.warning("User is already signed in. Sign out first.")
 		return false
 
-	# Generate token if not provided
-	if anonymous_token.is_empty():
-		anonymous_token = _generateAnonymousToken()
+	if not anonymous_token.is_empty():
+		_logger.warning("signUpAnonymous: anonymous_token is deprecated and ignored, the server issues the token. Use signInAnonymous() for an existing token.")
 
-	var request := {
-		"type": "ANONYMOUS",
-		"anonymousToken": anonymous_token
-	}
-
+	var request := {"type": "ANONYMOUS"}
 	if not display_name.is_empty():
 		request["username"] = display_name
 
-	return await _signUp(request)
+	var response := await _http.postAsync(ENDPOINT_SIGNUP, request)
+	if not _isSignUpSuccess(response):
+		return _signUpFailed(response)
+
+	var data: Dictionary = response.data
+	var issuedToken := _stringOf(data.get("anonymousToken"))
+	if issuedToken.is_empty():
+		_logger.error("Anonymous signup did not return a token")
+		signup_failed.emit("Anonymous signup did not return a token")
+		return false
+
+	# Store the token first: after a failed sign in below the account still
+	# exists and restoreAnonymousSession() can open a session for it.
+	_saveAnonymousToken(issuedToken)
+
+	if not _stringOf(data.get("accessToken")).is_empty():
+		var user := data.duplicate()
+		user["isAnonymous"] = true
+		_updateCurrentUser(user)
+		_cacheSession()
+		_logger.info("User signed up successfully: %s" % data.get("userId"))
+		signup_completed.emit(_currentUser)
+		return true
+
+	_logger.info("Anonymous user created: %s, signing in" % data.get("userId"))
+	if not await _signIn({"type": "ANONYMOUS", "anonymousToken": issuedToken}):
+		signup_failed.emit("Anonymous sign in after signup failed")
+		return false
+
+	signup_completed.emit(_currentUser)
+	return true
 
 
 ## Sign up with email and password.
@@ -181,17 +213,28 @@ func signUpApple(identity_token: String, first_name: String = "", last_name: Str
 
 ## Internal signup implementation.
 func _signUp(request: Dictionary) -> bool:
-	var response := await _http.postAsync("/api/v1/app/user-management/signup", request)
+	var response := await _http.postAsync(ENDPOINT_SIGNUP, request)
 
-	if response.isSuccess and response.data is Dictionary:
+	if _isSignUpSuccess(response):
 		var data: Dictionary = response.data
-		if data.has("userId") and not data.get("userId", "").is_empty():
-			_updateCurrentUser(data)
-			_cacheSession()
-			_logger.info("User signed up successfully: %s" % data.get("userId"))
-			signup_completed.emit(_currentUser)
-			return true
+		_updateCurrentUser(data)
+		_cacheSession()
+		_logger.info("User signed up successfully: %s" % data.get("userId"))
+		signup_completed.emit(_currentUser)
+		return true
 
+	return _signUpFailed(response)
+
+
+## Check whether a signup response carries a created user.
+func _isSignUpSuccess(response: HorizonNetworkResponse) -> bool:
+	return response.isSuccess and response.data is Dictionary \
+		and not _stringOf(response.data.get("userId")).is_empty()
+
+
+## Log and emit a failed signup.
+## @return Always false
+func _signUpFailed(response: HorizonNetworkResponse) -> bool:
 	var errorMsg := response.error
 	if errorMsg.is_empty() and response.data is Dictionary:
 		errorMsg = response.data.get("message", "Signup failed")
@@ -298,13 +341,20 @@ func restoreAnonymousSession() -> bool:
 
 ## Internal signin implementation.
 func _signIn(request: Dictionary) -> bool:
-	var response := await _http.postAsync("/api/v1/app/user-management/signin", request)
+	var response := await _http.postAsync(ENDPOINT_SIGNIN, request)
 
 	if response.isSuccess and response.data is Dictionary:
 		var data: Dictionary = response.data
 		var authStatus := data.get("authStatus", "")
 
 		if authStatus == HorizonErrorCodes.AUTH_STATUS_AUTHENTICATED:
+			if request.get("type", "") == "ANONYMOUS":
+				# The signin response carries neither isAnonymous nor the token:
+				# keep the token that was sent, so it stays stored for later sign ins.
+				data = data.duplicate()
+				data["isAnonymous"] = true
+				if _stringOf(data.get("anonymousToken")).is_empty():
+					data["anonymousToken"] = request.get("anonymousToken", "")
 			_updateCurrentUser(data)
 			_cacheSession()
 			_logger.info("User signed in successfully: %s" % data.get("userId"))
@@ -497,14 +547,9 @@ func _updateCurrentUser(response: Dictionary) -> void:
 		_saveAnonymousToken(_currentUser.anonymousToken)
 
 
-## Generate a unique anonymous token.
-## @return 32-character unique token
-func _generateAnonymousToken() -> String:
-	# Generate a GUID-like token without dashes (max 32 chars per API spec)
-	var bytes := PackedByteArray()
-	for i in 16:
-		bytes.append(randi() % 256)
-	return bytes.hex_encode()
+## A JSON string value, "" for null or other types.
+func _stringOf(value: Variant) -> String:
+	return value if value is String else ""
 
 
 ## Cache the current session to persistent storage.

@@ -108,6 +108,7 @@ var success = await Horizon.auth.signUpEmail("user@example.com", "password", "Us
 var success = await Horizon.auth.signInEmail("user@example.com", "password")
 
 # Anonymous authentication
+# The server issues the anonymous token: signUpAnonymous() stores it and signs in with it
 var success = await Horizon.auth.signUpAnonymous("DisplayName")
 var success = await Horizon.auth.signInAnonymous("cached-token")
 var success = await Horizon.auth.restoreAnonymousSession()
