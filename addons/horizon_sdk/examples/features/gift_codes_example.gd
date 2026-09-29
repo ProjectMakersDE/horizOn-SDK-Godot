@@ -54,5 +54,7 @@ func _ready() -> void:
 
 	if result.get("success", false):
 		print("Redeemed. Rewards: %s" % JSON.stringify(result.get("rewards", {})))
+		# Cosmetics unlocked by the code (`grants` in the gift data), [] without grants.
+		print("Unlocked cosmetics: %s" % [result.get("grantedUnlocks", [])])
 	else:
 		print("Redemption rejected: %s" % result.get("message", ""))

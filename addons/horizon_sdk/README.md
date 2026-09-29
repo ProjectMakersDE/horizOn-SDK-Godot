@@ -10,7 +10,8 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by ProjectMakers.
 - **Remote Config**: Server-side configuration values
 - **Localization**: Server-side translations in 15 languages
 - **News**: In-game news and announcements
-- **Gift Codes**: Validate and redeem promotional codes
+- **Gift Codes**: Validate and redeem promotional codes, unlock cosmetics
+- **Player Profile**: Avatar, frame and badges per player, shown on leaderboards
 - **Feedback**: Submit bug reports and feature requests
 - **User Logs**: Server-side player event tracking
 - **Crash Reporting**: Automatic crash capture, exception tracking, breadcrumbs
@@ -151,6 +152,11 @@ print("My position: %d" % myRank.position)
 
 # Get players around your position
 var around: Array[HorizonLeaderboardEntry] = await Horizon.leaderboard.getAround(5)
+
+# Every entry (and the rank) carries the player's profile, never null
+for entry in around:
+    if entry.profile.hasAvatar():
+        print("%s uses %s" % [entry.username, entry.profile.avatarId])
 ```
 
 ### Cloud Saves (Horizon.cloudSave)
@@ -215,7 +221,34 @@ var result: Dictionary = await Horizon.giftCodes.redeem("ABCD-1234")
 if result.get("success", false):
     var giftData = result.get("giftData", "")
     print("Rewards: %s" % giftData)
+    # Cosmetics unlocked by the code (`grants`), [] for codes without grants.
+    # The cached player profile is dropped, the next getProfile() shows them.
+    print("Unlocked: %s" % result.get("grantedUnlocks", []))
 ```
+
+### Player Profile (Horizon.playerProfile)
+
+Avatar, frame and up to three badges per player, shown on every leaderboard entry. Each project keeps a cosmetic catalog in the Dashboard; locked cosmetics need an unlock (granted by a gift code with `grants` or in the Dashboard). The server stores only IDs, your game maps them to its assets. Both calls need a signed-in player and send the player session (`Authorization: Bearer`).
+
+```gdscript
+# One call: profile, unlocks, catalog (with `available`) and limits
+var result: Dictionary = await Horizon.playerProfile.getProfile()
+var profile: Dictionary = result.get("profile", {})   # avatarId, frameId ("" = not set), badges
+var avatars: Array = Horizon.playerProfile.getCosmetics("avatar")
+var canUseGold: bool = Horizon.playerProfile.isAvailable("frame.gold")
+
+# PUT replaces the whole profile: pass current values for slots you keep.
+# "" clears a slot, [] clears the badges (max 3).
+var updated: Dictionary = await Horizon.playerProfile.setProfile(
+    "avatar.zombie_07", profile.get("frameId", ""), ["badge.supporter"])
+if updated.is_empty():
+    print(Horizon.playerProfile.getLastErrorCode())  # e.g. COSMETIC_LOCKED
+
+# Last successful result ({} before the first call and after sign-out)
+var cached: Dictionary = Horizon.playerProfile.getCurrentProfile()
+```
+
+Error codes from `getLastErrorCode()` and the `*_failed` signals: `SESSION_REQUIRED` (no session, checked locally), `INVALID_BADGES`, `INVALID_COSMETIC_ID` (also checked locally), `COSMETIC_NOT_FOUND`, `COSMETIC_TYPE_MISMATCH`, `COSMETIC_LOCKED`, `SESSION_FORBIDDEN`, `PLAYER_NOT_FOUND`. Without a server code the SDK error name is used (for example `API_RATE_LIMITED`, `NETWORK_ERROR`).
 
 ### Feedback (Horizon.feedback)
 
@@ -272,6 +305,14 @@ Horizon.leaderboard.top_entries_loaded.connect(func(entries): print("Loaded top"
 Horizon.leaderboard.rank_loaded.connect(func(entry): print("Rank: %d" % entry.position))
 ```
 
+### Player Profile
+```gdscript
+Horizon.playerProfile.profile_loaded.connect(func(profile): print("Profile: %s" % profile["profile"]))
+Horizon.playerProfile.profile_load_failed.connect(func(error, code): print("Load failed [%s]: %s" % [code, error]))
+Horizon.playerProfile.profile_updated.connect(func(profile): print("Saved: %s" % profile["profile"]))
+Horizon.playerProfile.profile_update_failed.connect(func(error, code): print("Save failed [%s]: %s" % [code, error]))
+```
+
 ### Cloud Save
 ```gdscript
 Horizon.cloudSave.data_saved.connect(func(size): print("Saved %d bytes" % size))
@@ -299,7 +340,7 @@ See `examples/hello_horizon/README.md` for details.
 `crash_reporting_example.gd`, `user_logs_example.gd`,
 `remote_config_example.gd`, `news_example.gd`,
 `email_sending_example.gd`, `gift_codes_example.gd`,
-`feedback_example.gd`). Each shows the minimal flow for that feature
+`feedback_example.gd`, `player_profile_example.gd`). Each shows the minimal flow for that feature
 with error handling. Attach a script to a `Node` and run the scene to
 try it. See `examples/features/README.md` for the run steps.
 
@@ -349,6 +390,16 @@ user.isAnonymous   # True if anonymous user
 entry.position     # Rank (1-indexed)
 entry.username     # Player name
 entry.score        # Score value
+entry.profile      # HorizonPlayerProfileData, never null
+```
+
+### HorizonPlayerProfileData
+```gdscript
+profile.avatarId     # Avatar ID ("" = not set)
+profile.frameId      # Frame ID ("" = not set)
+profile.badges       # Array[String], 0 to 3, order kept
+profile.hasAvatar()  # True if avatarId is set
+profile.hasFrame()   # True if frameId is set
 ```
 
 ### HorizonNewsEntry

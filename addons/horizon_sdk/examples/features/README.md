@@ -19,6 +19,7 @@ feature's signals and return values.
 | Email Sending | `email_sending_example.gd` |
 | Gift Codes | `gift_codes_example.gd` |
 | Feedback | `feedback_example.gd` |
+| Player Profile | `player_profile_example.gd` |
 
 ## How to run an example
 
@@ -27,8 +28,8 @@ feature's signals and return values.
 3. Run the scene. Output goes to the Godot Output panel.
 
 Each script's header comment lists what it does and the expected output.
-Some examples need values from your Dashboard, the email and gift code
-scripts say which placeholders to replace.
+Some examples need values from your Dashboard, the email, gift code and
+player profile scripts say what to set up or replace.
 
 For a guided first run that connects, signs in, and submits a score,
 see `../hello_horizon/`.

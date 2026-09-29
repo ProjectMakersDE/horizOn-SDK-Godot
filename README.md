@@ -22,7 +22,8 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https
 | ⚙️ **Remote Config** | Server-side configuration values |
 | 🌐 **Localization** | Server-side translations in 15 languages |
 | 📰 **News** | In-game news and announcements |
-| 🎁 **Gift Codes** | Validate and redeem promotional codes |
+| 🎁 **Gift Codes** | Validate and redeem promotional codes, unlock cosmetics |
+| 🧑 **Player Profile** | Avatar, frame and badges per player, shown on leaderboards |
 | 💬 **Feedback** | Submit bug reports and feature requests |
 | 📊 **User Logs** | Server-side player event tracking |
 | 💥 **Crash Reporting** | Automatic crash capture, exception tracking, breadcrumbs |
@@ -155,6 +156,11 @@ await Horizon.leaderboard.submitScore(1000)
 var top: Array[HorizonLeaderboardEntry] = await Horizon.leaderboard.getTop(10)
 var myRank: HorizonLeaderboardEntry = await Horizon.leaderboard.getRank()
 var around: Array[HorizonLeaderboardEntry] = await Horizon.leaderboard.getAround(5)
+
+# Every entry (and the rank) carries the player's profile, never null
+for entry in top:
+    if entry.profile.hasAvatar():
+        print("%s uses %s" % [entry.username, entry.profile.avatarId])
 ```
 
 ### Cloud Saves
@@ -223,7 +229,34 @@ var isValid = await Horizon.giftCodes.validate("ABCD-1234")
 var result = await Horizon.giftCodes.redeem("ABCD-1234")
 if result.get("success", false):
     var rewards = result.get("giftData", "")
+    # Cosmetics unlocked by the code (`grants`), [] for codes without grants.
+    # The cached player profile is dropped, the next getProfile() shows them.
+    var unlocked: Array = result.get("grantedUnlocks", [])
 ```
+
+### Player Profile
+
+Avatar, frame and up to three badges per player, shown on every leaderboard entry. Each project keeps a cosmetic catalog in the Dashboard; locked cosmetics need an unlock (granted by a gift code with `grants` or in the Dashboard). The server stores only IDs, your game maps them to its assets. Both calls need a signed-in player and send the player session (`Authorization: Bearer`).
+
+```gdscript
+# One call: profile, unlocks, catalog (with `available`) and limits
+var result: Dictionary = await Horizon.playerProfile.getProfile()
+var profile: Dictionary = result.get("profile", {})   # avatarId, frameId ("" = not set), badges
+var avatars: Array = Horizon.playerProfile.getCosmetics("avatar")
+var canUseGold: bool = Horizon.playerProfile.isAvailable("frame.gold")
+
+# PUT replaces the whole profile: pass current values for slots you keep.
+# "" clears a slot, [] clears the badges (max 3).
+var updated: Dictionary = await Horizon.playerProfile.setProfile(
+    "avatar.zombie_07", profile.get("frameId", ""), ["badge.supporter"])
+if updated.is_empty():
+    print(Horizon.playerProfile.getLastErrorCode())  # e.g. COSMETIC_LOCKED
+
+# Last successful result ({} before the first call and after sign-out)
+var cached: Dictionary = Horizon.playerProfile.getCurrentProfile()
+```
+
+Error codes from `getLastErrorCode()` and the `*_failed` signals: `SESSION_REQUIRED` (no session, checked locally), `INVALID_BADGES`, `INVALID_COSMETIC_ID` (also checked locally), `COSMETIC_NOT_FOUND`, `COSMETIC_TYPE_MISMATCH`, `COSMETIC_LOCKED`, `SESSION_FORBIDDEN`, `PLAYER_NOT_FOUND`. Without a server code the SDK error name is used (for example `API_RATE_LIMITED`, `NETWORK_ERROR`).
 
 ### Feedback
 
@@ -337,6 +370,11 @@ Horizon.auth.signin_failed.connect(func(error): print("Error: %s" % error))
 # Leaderboard
 Horizon.leaderboard.score_submitted.connect(func(score): print("Score: %d" % score))
 
+# Player Profile
+Horizon.playerProfile.profile_loaded.connect(func(profile): print("Profile: %s" % profile["profile"]))
+Horizon.playerProfile.profile_updated.connect(func(profile): print("Saved: %s" % profile["profile"]))
+Horizon.playerProfile.profile_update_failed.connect(func(error, code): print("Failed [%s]: %s" % [code, error]))
+
 # Cloud Save
 Horizon.cloudSave.data_saved.connect(func(size): print("Saved %d bytes" % size))
 Horizon.cloudSave.data_loaded.connect(func(data): print("Loaded"))
@@ -447,6 +485,7 @@ addons/horizon_sdk/
 │   ├── localization.gd     # Localization
 │   ├── news.gd             # News
 │   ├── gift_codes.gd       # Gift codes
+│   ├── player_profile.gd   # Player profile (avatar, frame, badges)
 │   ├── feedback.gd         # Feedback
 │   ├── user_logs.gd        # User logs
 │   ├── crashes.gd          # Crash reporting

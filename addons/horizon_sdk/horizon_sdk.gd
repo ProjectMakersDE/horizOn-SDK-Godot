@@ -49,6 +49,7 @@ var remoteConfig: HorizonRemoteConfig
 var localization: HorizonLocalization
 var news: HorizonNews
 var giftCodes: HorizonGiftCodes
+var playerProfile: HorizonPlayerProfile
 var feedback: HorizonFeedback
 var userLogs: HorizonUserLogs
 var crashes: HorizonCrashes
@@ -158,9 +159,14 @@ func _initializeManagers() -> void:
 	news = HorizonNews.new()
 	news.initialize(_http, _logger)
 
-	# Gift Codes
+	# Player Profile
+	playerProfile = HorizonPlayerProfile.new()
+	playerProfile.initialize(_http, _logger, auth)
+
+	# Gift Codes (drops the cached player profile when a code grants unlocks)
 	giftCodes = HorizonGiftCodes.new()
 	giftCodes.initialize(_http, _logger, auth)
+	giftCodes.setPlayerProfile(playerProfile)
 
 	# Feedback
 	feedback = HorizonFeedback.new()

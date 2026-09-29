@@ -246,6 +246,16 @@ func postAsync(endpoint: String, data: Dictionary = {}, useSessionToken: bool = 
 	return await _sendRequest(endpoint, HTTPClient.METHOD_POST, data, useSessionToken)
 
 
+## Make a PUT request with JSON body.
+## Same headers, retries and error handling as postAsync.
+## @param endpoint The API endpoint
+## @param data Request body data (will be JSON-encoded)
+## @param useSessionToken Whether to include Authorization header
+## @return Network response
+func putAsync(endpoint: String, data: Dictionary = {}, useSessionToken: bool = false) -> HorizonNetworkResponse:
+	return await _sendRequest(endpoint, HTTPClient.METHOD_PUT, data, useSessionToken)
+
+
 ## Make a DELETE request.
 ## @param endpoint The API endpoint
 ## @param useSessionToken Whether to include Authorization header
@@ -276,6 +286,8 @@ func _methodName(method: int) -> String:
 	match method:
 		HTTPClient.METHOD_POST:
 			return "POST"
+		HTTPClient.METHOD_PUT:
+			return "PUT"
 		HTTPClient.METHOD_DELETE:
 			return "DELETE"
 		_:
@@ -314,7 +326,7 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 
 		# Build body
 		var bodyJson := ""
-		if not data.is_empty() or method == HTTPClient.METHOD_POST:
+		if not data.is_empty() or method == HTTPClient.METHOD_POST or method == HTTPClient.METHOD_PUT:
 			bodyJson = _toJsonExcludeEmpty(data)
 			_logger.debug("Request JSON: %s" % bodyJson)
 
@@ -389,7 +401,9 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 			_logger.error("Request failed: %s %s - %s" % [_methodName(method), url, errorMsg])
 			var errorCode := HorizonErrorCodes.fromHttpStatus(responseCode)
 			request_failed.emit(url, errorMsg)
-			return HorizonNetworkResponse.failure(errorMsg, responseCode, errorCode)
+			var failed := HorizonNetworkResponse.failure(errorMsg, responseCode, errorCode)
+			failed.serverCode = _parseServerErrorCode(bodyText)
+			return failed
 
 		# Success - parse JSON response
 		var trimmed := bodyText.strip_edges()
@@ -537,6 +551,20 @@ func _parseErrorMessage(bodyText: String, statusCode: int) -> String:
 				return parsed["error"]
 
 	return "HTTP %d" % statusCode
+
+
+## Parse the machine readable `code` field from an error body.
+## @param bodyText Response body text
+## @return The server code (e.g. "COSMETIC_LOCKED"), or "" when the body has none
+func _parseServerErrorCode(bodyText: String) -> String:
+	if bodyText.is_empty():
+		return ""
+	var parsed: Variant = JSON.parse_string(bodyText)
+	if parsed is Dictionary:
+		var code: Variant = parsed.get("code")
+		if code is String:
+			return code
+	return ""
 
 
 ## Read the Retry-After header in seconds (0.0 if missing or not numeric).

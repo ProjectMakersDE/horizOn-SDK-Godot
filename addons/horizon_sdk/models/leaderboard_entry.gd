@@ -15,6 +15,10 @@ var username: String = ""
 ## Score value
 var score: int = 0
 
+## Player profile (avatar, frame, badges). Never null: an entry without
+## a profile gets an empty one, so check profile.hasAvatar().
+var profile: HorizonPlayerProfileData = HorizonPlayerProfileData.new()
+
 
 ## Create a leaderboard entry from a dictionary.
 ## Safely handles null values from server responses.
@@ -28,6 +32,7 @@ static func fromDict(data: Dictionary) -> HorizonLeaderboardEntry:
 	entry.position = int(pos) if pos != null else 0
 	entry.username = user if user is String else ""
 	entry.score = int(sc) if sc != null else 0
+	entry.profile = HorizonPlayerProfileData.fromDict(data.get("profile"))
 	return entry
 
 
@@ -48,5 +53,6 @@ func toDict() -> Dictionary:
 	return {
 		"position": position,
 		"username": username,
-		"score": score
+		"score": score,
+		"profile": profile.toDict()
 	}

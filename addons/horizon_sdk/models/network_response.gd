@@ -22,6 +22,10 @@ var statusCode: int = 0
 ## Error code enum value
 var errorCode: int = 0
 
+## Machine readable error code from the server body (`code` field, e.g.
+## "COSMETIC_LOCKED"). Empty when the server sent none.
+var serverCode: String = ""
+
 
 ## Create a successful response.
 ## @param response_data The response data

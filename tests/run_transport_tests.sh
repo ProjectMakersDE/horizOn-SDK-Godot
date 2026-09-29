@@ -39,3 +39,4 @@ run_contract() {
 
 run_contract tests/mock_leaderboard_server.py tests/leaderboard_transport_test.gd
 run_contract tests/mock_gift_code_server.py tests/gift_code_transport_test.gd
+run_contract tests/mock_player_profile_server.py tests/player_profile_transport_test.gd

@@ -16,6 +16,7 @@ signal code_redeem_failed(code: String, error: String)
 var _http: HorizonHttpClient
 var _logger: HorizonLogger
 var _auth: HorizonAuth
+var _playerProfile: HorizonPlayerProfile
 
 
 ## Initialize the gift code manager.
@@ -27,6 +28,13 @@ func initialize(http: HorizonHttpClient, logger: HorizonLogger, auth: HorizonAut
 	_logger = logger
 	_auth = auth
 	_logger.info("Gift code manager initialized")
+
+
+## Connect the player profile manager, so a redeem that grants unlocks
+## drops its cached profile. Called by the Horizon singleton.
+## @param player_profile Player profile manager (may be null)
+func setPlayerProfile(player_profile: HorizonPlayerProfile) -> void:
+	_playerProfile = player_profile
 
 
 ## Validate a gift code without redeeming it.
@@ -63,8 +71,13 @@ func validate(code: String) -> Variant:
 ## Redeem a gift code to receive rewards.
 ## The request carries the signed-in player's session (Authorization: Bearer).
 ## The server only redeems codes for the player who owns that session.
+## Codes with `grants` unlock cosmetics for the player; the result lists them in
+## grantedUnlocks and the cached player profile is dropped, so the next
+## Horizon.playerProfile.getProfile() shows the unlocks.
 ## @param code The gift code to redeem
-## @return RedeemResult dictionary with success, message, and giftData, or null on error
+## @return RedeemResult dictionary with success, message, giftData and
+##         grantedUnlocks (Array of cosmetic IDs, [] without grants), or {} when
+##         the request was not sent
 func redeem(code: String) -> Dictionary:
 	if code.is_empty():
 		_logger.error("Gift code is required")
@@ -89,6 +102,10 @@ func redeem(code: String) -> Dictionary:
 		var success: bool = response.data.get("success", false)
 		var message: String = response.data.get("message", "")
 		var giftData: String = response.data.get("giftData", "")
+		var grantedUnlocks := _parseGrantedUnlocks(response.data.get("grantedUnlocks"))
+
+		if not grantedUnlocks.is_empty() and _playerProfile != null:
+			_playerProfile.clearCache()
 
 		if success:
 			_logger.info("Gift code %s redeemed successfully" % code)
@@ -100,7 +117,8 @@ func redeem(code: String) -> Dictionary:
 		return {
 			"success": success,
 			"message": message,
-			"giftData": giftData
+			"giftData": giftData,
+			"grantedUnlocks": grantedUnlocks
 		}
 
 	_logger.error("Gift code redemption error: %s" % response.error)
@@ -108,13 +126,14 @@ func redeem(code: String) -> Dictionary:
 	return {
 		"success": false,
 		"message": response.error,
-		"giftData": ""
+		"giftData": "",
+		"grantedUnlocks": []
 	}
 
 
 ## Redeem a gift code and parse the gift data as JSON.
 ## @param code The gift code to redeem
-## @return Dictionary with success bool and parsed rewards, or null on error
+## @return Dictionary with success bool, parsed rewards and grantedUnlocks, or {} when not sent
 func redeemParsed(code: String) -> Dictionary:
 	var result := await redeem(code)
 	if result.is_empty():
@@ -123,6 +142,7 @@ func redeemParsed(code: String) -> Dictionary:
 	var parsed := {}
 	parsed["success"] = result.get("success", false)
 	parsed["message"] = result.get("message", "")
+	parsed["grantedUnlocks"] = result.get("grantedUnlocks", [])
 
 	var giftData: String = result.get("giftData", "")
 	if not giftData.is_empty():
@@ -136,3 +156,15 @@ func redeemParsed(code: String) -> Dictionary:
 		parsed["rewards"] = {}
 
 	return parsed
+
+
+## Read grantedUnlocks from a redeem response ([] when missing or null).
+## @param value Raw JSON value
+## @return Array of cosmetic IDs
+func _parseGrantedUnlocks(value: Variant) -> Array:
+	var result: Array = []
+	if value is Array:
+		for id in value:
+			if id is String and not id.is_empty():
+				result.append(id)
+	return result
