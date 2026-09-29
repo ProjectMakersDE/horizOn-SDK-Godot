@@ -359,9 +359,19 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 					retryAfter = float(header.split(":")[1].strip_edges())
 					break
 			rate_limited.emit(retryAfter)
-			_logger.warning("Rate limited. Retrying after %.1f seconds..." % retryAfter)
-			await get_tree().create_timer(retryAfter).timeout
-			continue
+			if attemptCount < maxAttempts:
+				_logger.warning("Rate limited. Retrying after %.1f seconds..." % retryAfter)
+				await get_tree().create_timer(retryAfter).timeout
+				continue
+			# Still rate limited after the last attempt: fail with a clear message and keep the 429 status.
+			var rateLimitMsg := _rateLimitMessage(retryAfter)
+			_logger.error("Request failed: %s %s - %s" % [_methodName(method), url, rateLimitMsg])
+			request_failed.emit(url, rateLimitMsg)
+			return HorizonNetworkResponse.failure(
+				rateLimitMsg,
+				responseCode,
+				HorizonErrorCodes.ErrorCode.API_RATE_LIMITED
+			)
 
 		# Handle server errors (5xx) - retry
 		if responseCode >= 500:
@@ -447,6 +457,8 @@ func _sendBinaryRequest(endpoint: String, binaryData: PackedByteArray, useSessio
 	if responseCode >= 400:
 		var bodyText := body.get_string_from_utf8()
 		var errorMsg := _parseErrorMessage(bodyText, responseCode)
+		if responseCode == HorizonErrorCodes.HTTP_RATE_LIMITED:
+			errorMsg = _rateLimitMessage(_retryAfterSeconds(result[2]))
 		return HorizonNetworkResponse.failure(errorMsg, responseCode, HorizonErrorCodes.fromHttpStatus(responseCode))
 
 	var bodyText := body.get_string_from_utf8()
@@ -492,7 +504,8 @@ func _sendBinaryGetRequest(endpoint: String, useSessionToken: bool) -> Dictionar
 		return {"success": true, "found": false, "data": PackedByteArray(), "error": ""}
 
 	if responseCode >= 400:
-		return {"success": false, "found": false, "data": PackedByteArray(), "error": "HTTP %d" % responseCode}
+		var errorMsg: String = _rateLimitMessage(_retryAfterSeconds(result[2])) if responseCode == HorizonErrorCodes.HTTP_RATE_LIMITED else "HTTP %d" % responseCode
+		return {"success": false, "found": false, "data": PackedByteArray(), "error": errorMsg}
 
 	return {"success": true, "found": true, "data": body, "error": ""}
 
@@ -524,6 +537,25 @@ func _parseErrorMessage(bodyText: String, statusCode: int) -> String:
 				return parsed["error"]
 
 	return "HTTP %d" % statusCode
+
+
+## Read the Retry-After header in seconds (0.0 if missing or not numeric).
+## @param responseHeaders Response headers from HTTPRequest.request_completed
+## @return Seconds to wait before the next request
+func _retryAfterSeconds(responseHeaders: PackedStringArray) -> float:
+	for header in responseHeaders:
+		if header.to_lower().begins_with("retry-after:"):
+			return maxf(header.split(":")[1].strip_edges().to_float(), 0.0)
+	return 0.0
+
+
+## Error message for a request that is still rate limited (HTTP 429).
+## @param retryAfterSeconds Seconds from the Retry-After header (0 if unknown)
+## @return Human-readable error message
+func _rateLimitMessage(retryAfterSeconds: float) -> String:
+	if retryAfterSeconds > 0.0:
+		return "Rate limit exceeded (HTTP 429). Try again in %d seconds." % ceili(retryAfterSeconds)
+	return "Rate limit exceeded (HTTP 429). Try again later."
 
 
 ## Get ping results for all hosts.
