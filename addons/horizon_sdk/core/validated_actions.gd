@@ -459,8 +459,9 @@ func _submit(score: int, input_log_hash: String, stage: String, leaderboard_key:
 		run_submitted.emit(resultDict)
 		return resultDict
 
-	if _isFinalRejection(response):
+	if response.isSuccess or _isFinalRejection(response):
 		# The server consumed or refused the ticket for good; a retry cannot succeed.
+		# A 2xx without a JSON object body still consumed the ticket.
 		_endRun(sentTicket)
 	return _fail(_errorMessage(response, "Failed to submit validated run"), _errorCodeOf(response), true)
 
@@ -586,9 +587,12 @@ func _normalizeEarnedEntry(entry: Variant) -> Dictionary:
 	return {}
 
 
-## Server `code` when present, otherwise NOT_SUPPORTED for a bare 404,
+## Server `code` when present, otherwise NOT_SUPPORTED for a bare 404 or a 404 with
+## the generic code NOT_FOUND (the simpleServer's unknown route answer),
 ## otherwise the SDK error name from the HTTP status.
 func _errorCodeOf(response: HorizonNetworkResponse) -> String:
+	if response.statusCode == HorizonErrorCodes.HTTP_NOT_FOUND and (response.serverCode.is_empty() or response.serverCode == "NOT_FOUND"):
+		return ERROR_NOT_SUPPORTED
 	if not response.serverCode.is_empty():
 		return response.serverCode
 	if response.isSuccess:
