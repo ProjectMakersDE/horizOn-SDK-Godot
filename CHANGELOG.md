@@ -1,3 +1,10 @@
+## [1.7.3](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.7.2...v1.7.3) (2026-09-30)
+
+
+### Bug Fixes
+
+* **auth:** let the server issue the anonymous token on signup ([a9b32a9](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/a9b32a90842debb2826295b72e3c98b3f9ca3300))
+
 ## [1.7.2](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.7.1...v1.7.2) (2026-09-28)
 
 
