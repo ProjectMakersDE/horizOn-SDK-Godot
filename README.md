@@ -120,6 +120,7 @@ await Horizon.auth.signUpEmail("user@example.com", "password", "Username")
 await Horizon.auth.signInEmail("user@example.com", "password")
 
 # Anonymous authentication
+# The server issues the anonymous token: signUpAnonymous() stores it and signs in with it
 await Horizon.auth.signUpAnonymous("DisplayName")
 await Horizon.auth.restoreAnonymousSession()
 
