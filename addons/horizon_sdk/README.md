@@ -163,6 +163,9 @@ for entry in around:
 
 ### Cloud Saves (Horizon.cloudSave)
 
+Sign in before saving or loading. JSON and binary requests carry the player session.
+Binary loads POST a JSON `userId` body and request `application/octet-stream`; a missing save returns empty bytes.
+
 ```gdscript
 # Save JSON string
 var success = await Horizon.cloudSave.saveData('{"level": 5, "coins": 1000}')

@@ -167,6 +167,9 @@ for entry in top:
 
 ### Cloud Saves
 
+Sign in before saving or loading. JSON and binary requests carry the player session.
+Binary loads POST a JSON `userId` body and request `application/octet-stream`; a missing save returns empty bytes.
+
 ```gdscript
 # Dictionary (recommended)
 await Horizon.cloudSave.saveObject({"level": 5, "coins": 1000})

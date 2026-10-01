@@ -278,7 +278,14 @@ func postBinaryAsync(endpoint: String, binaryData: PackedByteArray, useSessionTo
 ## @param useSessionToken Whether to include Authorization header
 ## @return Dictionary with "found" bool and "data" PackedByteArray
 func getBinaryAsync(endpoint: String, useSessionToken: bool = false) -> Dictionary:
-	return await _sendBinaryGetRequest(endpoint, useSessionToken)
+	return await _sendBinaryResponseRequest(endpoint, HTTPClient.METHOD_GET, {}, useSessionToken)
+
+
+## Make a POST request with a JSON body expecting a binary response.
+## Cloud Save load requires application/json input and application/octet-stream output.
+## @return Dictionary with "success", "found", "data" and "error"
+func postJsonForBinaryAsync(endpoint: String, data: Dictionary, useSessionToken: bool = false) -> Dictionary:
+	return await _sendBinaryResponseRequest(endpoint, HTTPClient.METHOD_POST, data, useSessionToken)
 
 
 ## Human-readable HTTP method name for logging and telemetry.
@@ -492,8 +499,8 @@ func _sendBinaryRequest(endpoint: String, binaryData: PackedByteArray, useSessio
 	return HorizonNetworkResponse.success(parsed if parsed != null else {}, responseCode)
 
 
-## Send binary GET request.
-func _sendBinaryGetRequest(endpoint: String, useSessionToken: bool) -> Dictionary:
+## Send a request expecting a binary response.
+func _sendBinaryResponseRequest(endpoint: String, method: int, data: Dictionary, useSessionToken: bool) -> Dictionary:
 	if activeHost.is_empty():
 		return {"success": false, "found": false, "data": PackedByteArray(), "error": "No active host"}
 
@@ -510,7 +517,12 @@ func _sendBinaryGetRequest(endpoint: String, useSessionToken: bool) -> Dictionar
 	if useSessionToken and not sessionToken.is_empty():
 		headers.append("Authorization: Bearer " + sessionToken)
 
-	var error := http.request(url, headers, HTTPClient.METHOD_GET)
+	var bodyJson := ""
+	if method == HTTPClient.METHOD_POST:
+		headers.append("Content-Type: application/json")
+		bodyJson = _toJsonExcludeEmpty(data)
+
+	var error := http.request(url, headers, method, bodyJson)
 	if error != OK:
 		http.queue_free()
 		return {"success": false, "found": false, "data": PackedByteArray(), "error": "Failed to start request"}
