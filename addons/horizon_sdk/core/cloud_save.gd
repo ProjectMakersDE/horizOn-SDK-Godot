@@ -53,7 +53,7 @@ func saveData(data: String) -> bool:
 		"saveData": data
 	}
 
-	var response = await _http.postAsync("/api/v1/app/cloud-save/save", request)
+	var response = await _http.postAsync("/api/v1/app/cloud-save/save", request, true)
 
 	if response.isSuccess and response.data is Dictionary:
 		var success: bool = response.data.get("success", false)
@@ -82,7 +82,7 @@ func loadData() -> String:
 		"userId": user.userId
 	}
 
-	var response = await _http.postAsync("/api/v1/app/cloud-save/load", request)
+	var response = await _http.postAsync("/api/v1/app/cloud-save/load", request, true)
 
 	if response.isSuccess and response.data is Dictionary:
 		var found: bool = response.data.get("found", false)
@@ -118,7 +118,7 @@ func saveBytes(data: PackedByteArray) -> bool:
 	var user = _auth.getCurrentUser()
 	var endpoint = "/api/v1/app/cloud-save/save?userId=%s" % user.userId
 
-	var response = await _http.postBinaryAsync(endpoint, data)
+	var response = await _http.postBinaryAsync(endpoint, data, true)
 
 	if response.isSuccess and response.data is Dictionary:
 		var success: bool = response.data.get("success", false)
@@ -142,9 +142,9 @@ func loadBytes() -> PackedByteArray:
 		return PackedByteArray()
 
 	var user = _auth.getCurrentUser()
-	var endpoint = "/api/v1/app/cloud-save/load?userId=%s" % user.userId
+	var request := {"userId": user.userId}
 
-	var result = await _http.getBinaryAsync(endpoint)
+	var result = await _http.postJsonForBinaryAsync("/api/v1/app/cloud-save/load", request, true)
 
 	if result.get("success", false):
 		if result.get("found", false):

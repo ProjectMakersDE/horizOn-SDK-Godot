@@ -246,6 +246,16 @@ func postAsync(endpoint: String, data: Dictionary = {}, useSessionToken: bool = 
 	return await _sendRequest(endpoint, HTTPClient.METHOD_POST, data, useSessionToken)
 
 
+## Make a PUT request with JSON body.
+## Same headers, retries and error handling as postAsync.
+## @param endpoint The API endpoint
+## @param data Request body data (will be JSON-encoded)
+## @param useSessionToken Whether to include Authorization header
+## @return Network response
+func putAsync(endpoint: String, data: Dictionary = {}, useSessionToken: bool = false) -> HorizonNetworkResponse:
+	return await _sendRequest(endpoint, HTTPClient.METHOD_PUT, data, useSessionToken)
+
+
 ## Make a DELETE request.
 ## @param endpoint The API endpoint
 ## @param useSessionToken Whether to include Authorization header
@@ -268,7 +278,14 @@ func postBinaryAsync(endpoint: String, binaryData: PackedByteArray, useSessionTo
 ## @param useSessionToken Whether to include Authorization header
 ## @return Dictionary with "found" bool and "data" PackedByteArray
 func getBinaryAsync(endpoint: String, useSessionToken: bool = false) -> Dictionary:
-	return await _sendBinaryGetRequest(endpoint, useSessionToken)
+	return await _sendBinaryResponseRequest(endpoint, HTTPClient.METHOD_GET, {}, useSessionToken)
+
+
+## Make a POST request with a JSON body expecting a binary response.
+## Cloud Save load requires application/json input and application/octet-stream output.
+## @return Dictionary with "success", "found", "data" and "error"
+func postJsonForBinaryAsync(endpoint: String, data: Dictionary, useSessionToken: bool = false) -> Dictionary:
+	return await _sendBinaryResponseRequest(endpoint, HTTPClient.METHOD_POST, data, useSessionToken)
 
 
 ## Human-readable HTTP method name for logging and telemetry.
@@ -276,6 +293,8 @@ func _methodName(method: int) -> String:
 	match method:
 		HTTPClient.METHOD_POST:
 			return "POST"
+		HTTPClient.METHOD_PUT:
+			return "PUT"
 		HTTPClient.METHOD_DELETE:
 			return "DELETE"
 		_:
@@ -314,7 +333,7 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 
 		# Build body
 		var bodyJson := ""
-		if not data.is_empty() or method == HTTPClient.METHOD_POST:
+		if not data.is_empty() or method == HTTPClient.METHOD_POST or method == HTTPClient.METHOD_PUT:
 			bodyJson = _toJsonExcludeEmpty(data)
 			_logger.debug("Request JSON: %s" % bodyJson)
 
@@ -359,9 +378,31 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 					retryAfter = float(header.split(":")[1].strip_edges())
 					break
 			rate_limited.emit(retryAfter)
-			_logger.warning("Rate limited. Retrying after %.1f seconds..." % retryAfter)
-			await get_tree().create_timer(retryAfter).timeout
-			continue
+			# A 429 whose body carries a `code` is a feature limit (e.g. RUN_RATE_LIMITED,
+			# RUN_CAPACITY_REACHED), not the transient account request limit (empty body).
+			# The wait can be an hour, so fail at once and let the game decide.
+			var limitBody := body.get_string_from_utf8()
+			var limitCode := _parseServerErrorCode(limitBody)
+			if not limitCode.is_empty():
+				var limitMsg := _parseErrorMessage(limitBody, responseCode)
+				_logger.error("Request failed: %s %s - %s [%s, retry after %.0f s]" % [_methodName(method), url, limitMsg, limitCode, retryAfter])
+				request_failed.emit(url, limitMsg)
+				var limited := HorizonNetworkResponse.failure(limitMsg, responseCode, HorizonErrorCodes.ErrorCode.API_RATE_LIMITED)
+				limited.serverCode = limitCode
+				return limited
+			if attemptCount < maxAttempts:
+				_logger.warning("Rate limited. Retrying after %.1f seconds..." % retryAfter)
+				await get_tree().create_timer(retryAfter).timeout
+				continue
+			# Still rate limited after the last attempt: fail with a clear message and keep the 429 status.
+			var rateLimitMsg := _rateLimitMessage(retryAfter)
+			_logger.error("Request failed: %s %s - %s" % [_methodName(method), url, rateLimitMsg])
+			request_failed.emit(url, rateLimitMsg)
+			return HorizonNetworkResponse.failure(
+				rateLimitMsg,
+				responseCode,
+				HorizonErrorCodes.ErrorCode.API_RATE_LIMITED
+			)
 
 		# Handle server errors (5xx) - retry
 		if responseCode >= 500:
@@ -379,7 +420,9 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 			_logger.error("Request failed: %s %s - %s" % [_methodName(method), url, errorMsg])
 			var errorCode := HorizonErrorCodes.fromHttpStatus(responseCode)
 			request_failed.emit(url, errorMsg)
-			return HorizonNetworkResponse.failure(errorMsg, responseCode, errorCode)
+			var failed := HorizonNetworkResponse.failure(errorMsg, responseCode, errorCode)
+			failed.serverCode = _parseServerErrorCode(bodyText)
+			return failed
 
 		# Success - parse JSON response
 		var trimmed := bodyText.strip_edges()
@@ -447,6 +490,8 @@ func _sendBinaryRequest(endpoint: String, binaryData: PackedByteArray, useSessio
 	if responseCode >= 400:
 		var bodyText := body.get_string_from_utf8()
 		var errorMsg := _parseErrorMessage(bodyText, responseCode)
+		if responseCode == HorizonErrorCodes.HTTP_RATE_LIMITED:
+			errorMsg = _rateLimitMessage(_retryAfterSeconds(result[2]))
 		return HorizonNetworkResponse.failure(errorMsg, responseCode, HorizonErrorCodes.fromHttpStatus(responseCode))
 
 	var bodyText := body.get_string_from_utf8()
@@ -454,8 +499,8 @@ func _sendBinaryRequest(endpoint: String, binaryData: PackedByteArray, useSessio
 	return HorizonNetworkResponse.success(parsed if parsed != null else {}, responseCode)
 
 
-## Send binary GET request.
-func _sendBinaryGetRequest(endpoint: String, useSessionToken: bool) -> Dictionary:
+## Send a request expecting a binary response.
+func _sendBinaryResponseRequest(endpoint: String, method: int, data: Dictionary, useSessionToken: bool) -> Dictionary:
 	if activeHost.is_empty():
 		return {"success": false, "found": false, "data": PackedByteArray(), "error": "No active host"}
 
@@ -472,7 +517,12 @@ func _sendBinaryGetRequest(endpoint: String, useSessionToken: bool) -> Dictionar
 	if useSessionToken and not sessionToken.is_empty():
 		headers.append("Authorization: Bearer " + sessionToken)
 
-	var error := http.request(url, headers, HTTPClient.METHOD_GET)
+	var bodyJson := ""
+	if method == HTTPClient.METHOD_POST:
+		headers.append("Content-Type: application/json")
+		bodyJson = _toJsonExcludeEmpty(data)
+
+	var error := http.request(url, headers, method, bodyJson)
 	if error != OK:
 		http.queue_free()
 		return {"success": false, "found": false, "data": PackedByteArray(), "error": "Failed to start request"}
@@ -492,7 +542,8 @@ func _sendBinaryGetRequest(endpoint: String, useSessionToken: bool) -> Dictionar
 		return {"success": true, "found": false, "data": PackedByteArray(), "error": ""}
 
 	if responseCode >= 400:
-		return {"success": false, "found": false, "data": PackedByteArray(), "error": "HTTP %d" % responseCode}
+		var errorMsg: String = _rateLimitMessage(_retryAfterSeconds(result[2])) if responseCode == HorizonErrorCodes.HTTP_RATE_LIMITED else "HTTP %d" % responseCode
+		return {"success": false, "found": false, "data": PackedByteArray(), "error": errorMsg}
 
 	return {"success": true, "found": true, "data": body, "error": ""}
 
@@ -524,6 +575,39 @@ func _parseErrorMessage(bodyText: String, statusCode: int) -> String:
 				return parsed["error"]
 
 	return "HTTP %d" % statusCode
+
+
+## Parse the machine readable `code` field from an error body.
+## @param bodyText Response body text
+## @return The server code (e.g. "COSMETIC_LOCKED"), or "" when the body has none
+func _parseServerErrorCode(bodyText: String) -> String:
+	if bodyText.is_empty():
+		return ""
+	var parsed: Variant = JSON.parse_string(bodyText)
+	if parsed is Dictionary:
+		var code: Variant = parsed.get("code")
+		if code is String:
+			return code
+	return ""
+
+
+## Read the Retry-After header in seconds (0.0 if missing or not numeric).
+## @param responseHeaders Response headers from HTTPRequest.request_completed
+## @return Seconds to wait before the next request
+func _retryAfterSeconds(responseHeaders: PackedStringArray) -> float:
+	for header in responseHeaders:
+		if header.to_lower().begins_with("retry-after:"):
+			return maxf(header.split(":")[1].strip_edges().to_float(), 0.0)
+	return 0.0
+
+
+## Error message for a request that is still rate limited (HTTP 429).
+## @param retryAfterSeconds Seconds from the Retry-After header (0 if unknown)
+## @return Human-readable error message
+func _rateLimitMessage(retryAfterSeconds: float) -> String:
+	if retryAfterSeconds > 0.0:
+		return "Rate limit exceeded (HTTP 429). Try again in %d seconds." % ceili(retryAfterSeconds)
+	return "Rate limit exceeded (HTTP 429). Try again later."
 
 
 ## Get ping results for all hosts.

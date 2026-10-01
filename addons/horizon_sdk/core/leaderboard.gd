@@ -15,6 +15,14 @@ signal rank_loaded(entry: HorizonLeaderboardEntry)
 signal around_entries_loaded(entries: Array[HorizonLeaderboardEntry])
 signal boards_loaded(boards: Array[Dictionary])
 
+## Server code of a normal submit to a "validated only" board. Such a board
+## takes scores only through Horizon.validatedActions.submitValidated().
+const ERROR_VALIDATED_SUBMIT_REQUIRED := "VALIDATED_SUBMIT_REQUIRED"
+
+## Server code of a submit by a player the account banned from the board
+## (403, nothing is written). Not retried.
+const ERROR_PLAYER_BANNED := "PLAYER_BANNED"
+
 ## Dependencies
 var _http: HorizonHttpClient
 var _logger: HorizonLogger
@@ -22,6 +30,9 @@ var _auth: HorizonAuth
 
 ## Cache for leaderboard data
 var _cache: Dictionary = {}
+
+## Error code of the last failed submitScore() ("" after a success)
+var _lastErrorCode: String = ""
 
 
 func _normalizeBoardKey(board_key: String) -> String:
@@ -57,12 +68,16 @@ func initialize(http: HorizonHttpClient, logger: HorizonLogger, auth: HorizonAut
 
 ## Submit a score to the leaderboard.
 ## Score is only updated if it's higher than the previous best.
+## A board with validatedOnly rejects this call with 403 and
+## getLastErrorCode() == "VALIDATED_SUBMIT_REQUIRED" (not retried).
+## A player banned from the board gets 403 and "PLAYER_BANNED" (not retried).
 ## @param score Score value (must be positive)
 ## @param board_key Optional board key for multi-board leaderboards
 ## @return True if submission succeeded
 func submitScore(score: int, board_key: String = "") -> bool:
 	if not _auth.isSignedIn():
 		_logger.error("User must be signed in to submit score")
+		_lastErrorCode = "SESSION_REQUIRED"
 		score_submit_failed.emit("User must be signed in")
 		return false
 
@@ -80,14 +95,31 @@ func submitScore(score: int, board_key: String = "") -> bool:
 
 	if response.isSuccess:
 		_logger.info("Score submitted: %d" % score)
+		_lastErrorCode = ""
 		# Invalidate cache
 		_cache.clear()
 		score_submitted.emit(score)
 		return true
 
-	_logger.error("Score submission failed: %s" % response.error)
+	_lastErrorCode = _errorCodeOf(response)
+	if _lastErrorCode == ERROR_VALIDATED_SUBMIT_REQUIRED:
+		_logger.error("Score submission refused: board '%s' accepts validated runs only (use Horizon.validatedActions)" % ("default" if normalized_board_key.is_empty() else normalized_board_key))
+	elif _lastErrorCode == ERROR_PLAYER_BANNED:
+		_logger.error("Score submission refused: the player is banned from board '%s'" % ("default" if normalized_board_key.is_empty() else normalized_board_key))
+	else:
+		_logger.error("Score submission failed [%s]: %s" % [_lastErrorCode, response.error])
 	score_submit_failed.emit(response.error)
 	return false
+
+
+## Error code of the last failed submitScore(): the server `code` (e.g.
+## "VALIDATED_SUBMIT_REQUIRED" for a validated only board, "PLAYER_BANNED" for a
+## player banned from the board), "SESSION_REQUIRED"
+## when nobody is signed in, or the SDK error name derived from the HTTP
+## status (e.g. "API_RATE_LIMITED", "NETWORK_ERROR").
+## @return The code, or "" after a successful submit
+func getLastErrorCode() -> String:
+	return _lastErrorCode
 
 
 ## Get top entries from the leaderboard.
@@ -190,6 +222,8 @@ func getAround(range_count: int = 10, use_cache: bool = true, board_key: String 
 
 
 ## List available leaderboard boards for this app.
+## Every board has `validatedOnly` (bool, false when the server omits it):
+## such a board takes scores only through Horizon.validatedActions.
 ## @return Array of board dictionaries, or empty array if failed
 func listBoards() -> Array[Dictionary]:
 	var response := await _http.getAsync("/api/v1/app/leaderboards")
@@ -199,6 +233,8 @@ func listBoards() -> Array[Dictionary]:
 		var boards: Array[Dictionary] = []
 		for board in board_data:
 			if board is Dictionary:
+				var validated_only: Variant = board.get("validatedOnly")
+				board["validatedOnly"] = validated_only if validated_only is bool else false
 				boards.append(board)
 
 		_logger.info("Loaded %d leaderboard boards" % boards.size())
@@ -207,6 +243,14 @@ func listBoards() -> Array[Dictionary]:
 
 	_logger.error("Failed to list leaderboard boards: %s" % response.error)
 	return []
+
+
+## Server `code` when present, otherwise the SDK error name from the HTTP status.
+func _errorCodeOf(response: HorizonNetworkResponse) -> String:
+	if not response.serverCode.is_empty():
+		return response.serverCode
+	var key: Variant = HorizonErrorCodes.ErrorCode.find_key(response.errorCode)
+	return str(key) if key != null else "UNKNOWN"
 
 
 ## Clear the leaderboard cache.
