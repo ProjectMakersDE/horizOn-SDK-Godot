@@ -1,3 +1,15 @@
+# [1.9.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.8.0...v1.9.0) (2026-10-02)
+
+
+### Bug Fixes
+
+* use public health endpoint for Godot host checks ([d32fc19](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/d32fc194ced39da1c6d35103b85ba36441095e70))
+
+
+### Features
+
+* **validated-actions:** optional run start context and sus result ([14e5e57](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/14e5e570471ea61a88acdab61b2fae3255adace2))
+
 # [1.8.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.7.3...v1.8.0) (2026-10-01)
 
 
