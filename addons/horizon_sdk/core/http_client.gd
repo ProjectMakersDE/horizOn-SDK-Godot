@@ -162,7 +162,7 @@ func _pingAllHosts() -> void:
 ## @param host The host URL to ping
 ## @return Ping time in ms, or -1 if failed
 func _pingHost(host: String) -> float:
-	var pingUrl := host + "/actuator/health"
+	var pingUrl := host + "/api/v1/public/health"
 	var http := HTTPRequest.new()
 	add_child(http)
 	http.timeout = connectionTimeoutSeconds
@@ -182,7 +182,7 @@ func _pingHost(host: String) -> float:
 
 	if response_code == 200:
 		var bodyText := body.get_string_from_utf8()
-		if bodyText.contains('"status":"UP"'):
+		if bodyText.strip_edges() == "OK":
 			return float(Time.get_ticks_msec() - startTime)
 
 	return -1.0
@@ -192,7 +192,7 @@ func _pingHost(host: String) -> float:
 ## @param host The host URL to check
 ## @return True if the host reports healthy
 func _checkHealth(host: String) -> bool:
-	var healthUrl := host + "/actuator/health"
+	var healthUrl := host + "/api/v1/public/health"
 	var http := HTTPRequest.new()
 	add_child(http)
 	http.timeout = connectionTimeoutSeconds
@@ -210,7 +210,7 @@ func _checkHealth(host: String) -> bool:
 
 	if response_code == 200:
 		var bodyText := body.get_string_from_utf8()
-		if bodyText.contains('"status":"UP"'):
+		if bodyText.strip_edges() == "OK":
 			return true
 
 	return false

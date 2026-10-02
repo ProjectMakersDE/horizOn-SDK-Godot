@@ -1,3 +1,24 @@
+# [1.8.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.7.3...v1.8.0) (2026-10-01)
+
+
+### Bug Fixes
+
+* **auth:** let the server issue the anonymous token on signup ([f081038](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/f081038d72156531452c041b06106570e950a1d6))
+* **cloud-save:** authenticate saves and POST binary loads ([b4700a3](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/b4700a3b0cb715faa6a2f0647d7cd635073db3ac))
+* **gift-codes:** send the player session when redeeming a code ([9403888](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/9403888b5bf8b9f2c15fe0af26cbf971041c7311))
+* **http:** clear error when still rate limited after the last retry (TASK-885) ([1cb238e](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/1cb238ed3cf775d6e96b4056f001e654e3e317b0))
+* **validated-actions:** keep the run on LEADERBOARD_MISMATCH like the server order of checks ([dcf2fe8](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/dcf2fe88f2683cc41fcd8bded108c046fa9b9dce))
+* **validated-actions:** leave requested and credited absent when the server omits them ([4f8ffb7](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/4f8ffb7fc0556eeb4e24f88da90fbbc0a5ac8027))
+* **validated-actions:** report NOT_SUPPORTED for a generic 404 and end the run after any 2xx submit ([3cdbd06](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/3cdbd06c8b7efe353860b1034a48d4cb7ac81213))
+
+
+### Features
+
+* **player-profile:** add player profile, leaderboard profiles and gift code unlocks ([71a9373](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/71a9373351eb54e9d0be4c6f611bd6feee6000ba))
+* **validated-actions:** add server-owned player state with getState and a cached current state ([5dc1dc6](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/5dc1dc6b53f1358bf8b680c253b9f607f6c2755e))
+* **validated-actions:** add validated runs with tickets, input log hash and rejection codes ([548d535](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/548d53584fe0835ce7b72e23ebb5cfefc12bbc1b))
+* **validated-actions:** upload input log evidence and handle PLAYER_BANNED ([6f99f90](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/6f99f90df4623027b175d9bb7e3685b89f77e8b6))
+
 ## [1.7.3](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.7.2...v1.7.3) (2026-09-30)
 
 
