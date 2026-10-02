@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contract server for the Godot validated actions transport test (TASK-883, 887, 888).
+"""Contract server for the Godot validated actions transport test (TASK-883, 887, 888, 911).
 
 Expects exactly these requests, in this order, then no further request:
 1.  POST /api/v1/app/validated-actions/runs    (bound to "weekly", answered with a run)
@@ -37,6 +37,10 @@ Expects exactly these requests, in this order, then no further request:
 33. POST /api/v1/app/validated-actions/runs    (bound to "weekly", answered with run-10)
 34. POST /api/v1/app/validated-actions/submit  (evidence.maxBytes 4 below the 8 byte log: no PUT)
 35. PUT  /api/v1/app/validated-actions/runs/run-unknown/evidence (answered 404 EVIDENCE_NOT_REQUESTED)
+36. POST /api/v1/app/validated-actions/runs    (TASK-911, full start context, answered with run-11)
+37. POST /api/v1/app/validated-actions/submit  (answered 200 with sus and evidence.required)
+38. PUT  /api/v1/app/validated-actions/runs/run-11/evidence (automatic upload of the sus run, answered 200)
+39. POST /api/v1/app/validated-actions/runs    (context from default_run_context, answered 413 INITIAL_STATE_TOO_LARGE)
 Every request carries X-API-Key; all but the board list carry the player's Bearer session.
 """
 import json
@@ -69,6 +73,9 @@ READY_HASH = "a" * 64
 # Standard base64 of b"R1:L2:J3" and of the wrong log b"R1:L2:J4"
 LOG_BASE64 = "UjE6TDI6SjM="
 WRONG_LOG_BASE64 = "UjE6TDI6SjQ="
+# Standard base64 of the initial states bytes([0, 1, 2, 255]) and bytes([1, 2, 3])
+INITIAL_STATE_BASE64 = "AAEC/w=="
+DEFAULT_INITIAL_STATE_BASE64 = "AQID"
 
 
 def run_body(run_id, ticket, seed, board):
@@ -357,6 +364,34 @@ EXPECTED = [
         404, {},
         error_body(404, "Not Found", "EVIDENCE_NOT_REQUESTED",
                    "No evidence was requested for this run", EVIDENCE_PATH % "run-unknown", "run-unknown"),
+    ),
+    # ----- TASK-911: run start context and sus -----
+    (
+        "POST", RUNS_PATH, True,
+        # camelCase fields, the blank replay format version left out, the digest in lower case.
+        {"userId": USER_ID, "leaderboardKey": "weekly",
+         "context": {"gameVersion": "1.4.2", "contentVersion": "levels-7", "simulationVersion": "sim-3",
+                     "contentDigest": LOG_HASH, "initialState": INITIAL_STATE_BASE64}},
+        200, {}, run_body("run-11", "hzn-rt1:2026-09:ticket-eleven", 11, "weekly"),
+    ),
+    (
+        "POST", SUBMIT_PATH, True,
+        {"userId": USER_ID, "ticket": "hzn-rt1:2026-09:ticket-eleven", "inputLogHash": LOG_HASH,
+         "score": 900},
+        200, {}, dict(evidence_result("run-11"), sus=True),
+    ),
+    (
+        "PUT", EVIDENCE_PATH % "run-11", True,
+        {"userId": USER_ID, "log": LOG_BASE64},
+        200, {}, {"runId": "run-11", "status": "UPLOADED", "bytes": 8},
+    ),
+    (
+        "POST", RUNS_PATH, True,
+        {"userId": USER_ID, "leaderboardKey": "weekly",
+         "context": {"gameVersion": "1.4.2", "initialState": DEFAULT_INITIAL_STATE_BASE64}},
+        413, {},
+        error_body(413, "Payload Too Large", "INITIAL_STATE_TOO_LARGE",
+                   "initialState is larger than allowed", RUNS_PATH),
     ),
 ]
 

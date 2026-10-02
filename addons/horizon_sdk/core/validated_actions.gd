@@ -17,6 +17,9 @@
 ## after submitValidated(), by hand with uploadEvidence() after
 ## submitValidatedWithHash()). A player banned from the board gets
 ## 403 PLAYER_BANNED. See the "PART 2" and "PART 3" markers below.
+## TASK-911: startRun() takes an optional run start context (versions,
+## content digest, initial state); the submit result carries `sus` (an
+## accepted run that crossed a soft threshold, kept for review).
 ## ============================================================
 class_name HorizonValidatedActions
 extends RefCounted
@@ -56,6 +59,8 @@ const ERROR_NOT_SUPPORTED := "NOT_SUPPORTED"
 const ERROR_INVALID_RUN_ID := "INVALID_RUN_ID"
 ## uploadEvidence() with an empty log (the server requires a non-empty `log`)
 const ERROR_EMPTY_INPUT_LOG := "EMPTY_INPUT_LOG"
+## startRun() with a context whose content_digest is set but not 64 hex characters
+const ERROR_INVALID_CONTENT_DIGEST := "INVALID_CONTENT_DIGEST"
 
 ## Server error codes (`code` of the error body), Part 1
 const ERROR_SESSION_FORBIDDEN := "SESSION_FORBIDDEN"
@@ -113,6 +118,22 @@ const ERROR_EVIDENCE_TOO_LARGE := "EVIDENCE_TOO_LARGE"
 ## stays open until the window ends: upload the correct bytes again.
 const ERROR_EVIDENCE_HASH_MISMATCH := "EVIDENCE_HASH_MISMATCH"
 
+## Server error codes of the run start context (TASK-911), the run is not started
+## 400: `context.initialState` is not standard base64 (final)
+const ERROR_INITIAL_STATE_INVALID_ENCODING := "INITIAL_STATE_INVALID_ENCODING"
+## 413: the decoded initial state is larger than the game's evidenceMaxBytes (final)
+const ERROR_INITIAL_STATE_TOO_LARGE := "INITIAL_STATE_TOO_LARGE"
+
+## Run start context (TASK-911): String keys of the context Dictionary and
+## their JSON field names. `initial_state` (PackedByteArray) is handled apart.
+const RUN_CONTEXT_STRING_FIELDS := {
+	"game_version": "gameVersion",
+	"content_version": "contentVersion",
+	"simulation_version": "simulationVersion",
+	"replay_format_version": "replayFormatVersion",
+	"content_digest": "contentDigest",
+}
+
 ## Most `earned` entries the server takes per run (more is a 400)
 const MAX_EARNED_ENTRIES := 64
 
@@ -120,6 +141,12 @@ const MAX_EARNED_ENTRIES := 64
 ## (`evidence.required`) and the raw log bytes are known, i.e. after
 ## submitValidated(). Off: call uploadEvidence() yourself.
 var auto_upload_evidence: bool = true
+
+## Run start context used by startRun() when the call passes none ({}), for
+## example {"game_version": "1.4.2", "content_version": "levels-7"}. Same keys
+## as the `context` argument of startRun(). Not merged: a context passed to
+## startRun() replaces it completely. {} (default) sends no context.
+var default_run_context: Dictionary = {}
 
 ## Dependencies
 var _http: HorizonHttpClient
@@ -167,17 +194,34 @@ func setLeaderboard(leaderboard: HorizonLeaderboard) -> void:
 ## Sends POST /api/v1/app/validated-actions/runs.
 ## Seed the game's randomness with run["seed"] and record the input log.
 ## @param leaderboard_key Board to bind the ticket to, "" for an unbound run
+## @param context [TASK-911] Optional run start context, every key optional:
+##        "game_version", "content_version", "simulation_version",
+##        "replay_format_version" (String, at most 64 printable ASCII
+##        characters), "content_digest" (String, SHA-256 of the game content
+##        as 64 hex characters, e.g. computeInputLogHash(content_bytes)) and
+##        "initial_state" (PackedByteArray, the bytes the simulation starts
+##        from, sent as base64). The server binds it to the run and keeps it
+##        with a sus run. {} uses default_run_context; empty values are not
+##        sent, and a context without any value is not sent at all.
 ## @return The run (runId, ticket, seed, leaderboardKey, issuedAt, expiresAt,
-##         expiresInSeconds), or {} on failure (then getLastErrorCode() is set)
-func startRun(leaderboard_key: String = "") -> Dictionary:
+##         expiresInSeconds), or {} on failure (then getLastErrorCode() is set,
+##         e.g. INVALID_CONTENT_DIGEST locally, INITIAL_STATE_TOO_LARGE or
+##         INITIAL_STATE_INVALID_ENCODING from the server)
+func startRun(leaderboard_key: String = "", context: Dictionary = {}) -> Dictionary:
 	if not _hasSession():
 		return _fail("User must be signed in to start a validated run", ERROR_SESSION_REQUIRED, false)
+
+	var runContext := buildRunContext(context if not context.is_empty() else default_run_context)
+	if runContext.has(ERROR_INVALID_CONTENT_DIGEST):
+		return _fail("The content digest must be 64 hex characters (SHA-256)", ERROR_INVALID_CONTENT_DIGEST, false)
 
 	var user := _auth.getCurrentUser()
 	var request := {"userId": user.userId}
 	var boardKey := leaderboard_key.strip_edges()
 	if not boardKey.is_empty():
 		request["leaderboardKey"] = boardKey
+	if not runContext.is_empty():
+		request["context"] = runContext
 
 	var response := await _http.postAsync(ENDPOINT_RUNS, request, true)
 
@@ -203,7 +247,10 @@ func startRun(leaderboard_key: String = "") -> Dictionary:
 ##        amounts credit a server-owned value, negative amounts spend it.
 ##        Send it only when the rules define values (UNKNOWN_VALUE_KEY otherwise).
 ## @return The result (accepted, runId, leaderboardKey, score, bestScore,
-##         isNewHighScore, rank, durationSeconds, state, evidence), or {} on failure.
+##         isNewHighScore, rank, durationSeconds, state, evidence, sus), or {} on failure.
+##         `sus` [TASK-911] is true when the accepted run crossed a soft
+##         threshold: the score counts, the server keeps the run for a review
+##         and requests its log through `evidence` (uploaded like a top N record).
 ##         `state` holds every value after the run; touched keys carry
 ##         `requested` and `credited`.
 func submitValidated(score: int, input_log: PackedByteArray, stage: String = "", leaderboard_key: String = "", earned: Array = []) -> Dictionary:
@@ -231,8 +278,50 @@ func submitValidatedWithHash(score: int, input_log_hash: String, stage: String =
 	return await _submit(score, logHash.to_lower(), stage, leaderboard_key, earned, PackedByteArray(), false)
 
 
+## Wire form of a run start context (see startRun()): the camelCase JSON
+## fields, empty values left out, the digest in lower case and
+## initial_state as standard base64 with padding. Unknown keys and values of
+## the wrong type are dropped with a warning (no logger here: push_warning).
+## @param context Context with the snake_case keys of startRun()
+## @return The `context` object to send, {} when nothing is set, or
+##         {"INVALID_CONTENT_DIGEST": true} when content_digest is set but not
+##         64 hex characters
+static func buildRunContext(context: Dictionary) -> Dictionary:
+	var result := {}
+	for raw_key in context:
+		var key := str(raw_key)
+		if key == "initial_state":
+			var state: Variant = context[raw_key]
+			if state is PackedByteArray:
+				if not state.is_empty():
+					result["initialState"] = Marshalls.raw_to_base64(state)
+			elif state != null:
+				push_warning("horizOn: run context initial_state must be a PackedByteArray, dropped")
+			continue
+		if not RUN_CONTEXT_STRING_FIELDS.has(key):
+			push_warning("horizOn: unknown run context key %s, dropped" % str(key))
+			continue
+		var value: Variant = context[raw_key]
+		if value == null:
+			continue
+		if not (value is String or value is StringName):
+			push_warning("horizOn: run context %s must be a String, dropped" % key)
+			continue
+		var text := String(value)
+		if text.strip_edges().is_empty():
+			continue
+		if key == "content_digest":
+			text = text.strip_edges()
+			if not _isHexDigest(text):
+				return {ERROR_INVALID_CONTENT_DIGEST: true}
+			text = text.to_lower()
+		result[RUN_CONTEXT_STRING_FIELDS[key]] = text
+	return result
+
+
 ## SHA-256 of the raw input log bytes as 64 lower case hex characters.
 ## The same bytes must be uploaded later when the server requests evidence.
+## Also the helper for the run context's content_digest: pass the content bytes.
 ## @param input_log Raw input log bytes
 ## @return Hex digest
 static func computeInputLogHash(input_log: PackedByteArray) -> String:
@@ -259,7 +348,8 @@ func hasActiveRun() -> bool:
 
 
 ## Error code of the last failure: the server `code` (e.g. "DURATION_TOO_SHORT"),
-## a local code ("SESSION_REQUIRED", "NO_ACTIVE_RUN", "INVALID_INPUT_LOG_HASH"),
+## a local code ("SESSION_REQUIRED", "NO_ACTIVE_RUN", "INVALID_INPUT_LOG_HASH",
+## "INVALID_CONTENT_DIGEST"),
 ## "NOT_SUPPORTED" for a backend without Validated Actions, or the SDK error
 ## name derived from the HTTP status when the server sent no code
 ## (e.g. "API_RATE_LIMITED", "NETWORK_ERROR").
@@ -413,9 +503,13 @@ func _submitPrecheck() -> Dictionary:
 
 ## Exactly 64 hex characters, upper or lower case, no prefix or sign.
 func _isValidHash(log_hash: String) -> bool:
-	if log_hash.length() != INPUT_LOG_HASH_LENGTH:
+	return _isHexDigest(log_hash)
+
+
+static func _isHexDigest(value: String) -> bool:
+	if value.length() != INPUT_LOG_HASH_LENGTH:
 		return false
-	for character in log_hash:
+	for character in value:
 		if not HEX_DIGITS.contains(character):
 			return false
 	return true
@@ -456,7 +550,7 @@ func _submit(score: int, input_log_hash: String, stage: String, leaderboard_key:
 			_setCurrentState(result.state, sentUserId)
 		_afterAccepted(result, input_log, has_log)
 		var resultDict := result.toDict()
-		_logger.info("Validated run accepted: %s (rank %d)" % [result.runId, result.rank])
+		_logger.info("Validated run accepted: %s (rank %d)%s" % [result.runId, result.rank, " (sus)" if result.sus else ""])
 		run_submitted.emit(resultDict)
 		return resultDict
 
