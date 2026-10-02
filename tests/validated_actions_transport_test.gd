@@ -66,6 +66,9 @@ func _run() -> void:
 	if result["rank"] != 17 or result["bestScore"] != 21000 or result["durationSeconds"] != 734 or result["isNewHighScore"]:
 		_fail("submitValidated must map the result fields")
 		return
+	if result["sus"] != false:
+		_fail("a submit result without sus must read sus as false")
+		return
 	var state: Dictionary = result["state"]
 	var evidence: Dictionary = result["evidence"]
 	if state["day"] != "" or not (state["values"] as Array).is_empty() or evidence["required"] or evidence["maxBytes"] != 0:
@@ -353,6 +356,50 @@ func _run() -> void:
 		_fail("uploadEvidence with an empty log must fail locally with EMPTY_INPUT_LOG")
 		return
 
+	# ----- TASK-911: run start context and sus -----
+	# Local: a content digest that is not 64 hex characters, no request.
+	if not (await validated.startRun("weekly", {"content_digest": "abc"})).is_empty() or validated.getLastErrorCode() != "INVALID_CONTENT_DIGEST":
+		_fail("a malformed content digest must fail locally with INVALID_CONTENT_DIGEST")
+		return
+	# Wire form: camelCase, blank values left out, base64 with padding, an empty context left out.
+	var wire := HorizonValidatedActions.buildRunContext({"game_version": "1.4.2", "replay_format_version": "  ", "initial_state": PackedByteArray([104, 105])})
+	if wire != {"gameVersion": "1.4.2", "initialState": "aGk="}:
+		_fail("buildRunContext must map to camelCase, drop blank values and base64 the initial state: %s" % str(wire))
+		return
+	if not HorizonValidatedActions.buildRunContext({"game_version": " ", "initial_state": PackedByteArray()}).is_empty():
+		_fail("a context without values must build to {} (left out of the request)")
+		return
+
+	# 36. to 38. A run with a full context; the result is sus and requests the log,
+	# which the SDK uploads like a top N record.
+	run = await validated.startRun("weekly", {
+		"game_version": "1.4.2",
+		"content_version": "levels-7",
+		"simulation_version": "sim-3",
+		"replay_format_version": "",
+		"content_digest": LOG_HASH.to_upper(),
+		"initial_state": PackedByteArray([0, 1, 2, 255])
+	})
+	if run.is_empty():
+		_fail("startRun with a context was rejected by the contract server: %s" % validated.getLastErrorCode())
+		return
+	var signals_before_sus: int = evidence_events["uploaded"].size() + evidence_events["failed"].size()
+	var sus_result := await validated.submitValidated(900, input_log)
+	if sus_result.is_empty() or sus_result["sus"] != true or not sus_result["evidence"]["required"]:
+		_fail("a sus submit result must map sus and the evidence request")
+		return
+	if not await _waitForEvidence(evidence_events, signals_before_sus + 1) or evidence_events["uploaded"].back() != "run-11":
+		_fail("the input log of a sus run must be uploaded automatically")
+		return
+
+	# 39. default_run_context is used without a context; 413 INITIAL_STATE_TOO_LARGE is exposed.
+	validated.default_run_context = {"game_version": "1.4.2", "initial_state": PackedByteArray([1, 2, 3])}
+	var too_large := await validated.startRun("weekly")
+	validated.default_run_context = {}
+	if not too_large.is_empty() or validated.getLastErrorCode() != "INITIAL_STATE_TOO_LARGE" or validated.hasActiveRun():
+		_fail("a 413 INITIAL_STATE_TOO_LARGE must fail the start with that code")
+		return
+
 	# Player changes drop the run: sign-out, and sign-in of another player.
 	validated._currentRun = {"runId": "local", "ticket": "local"}
 	validated._currentRunUserId = "user-883"
@@ -395,7 +442,7 @@ func _run() -> void:
 
 	# Models are null safe.
 	var empty_result := HorizonValidatedSubmitResult.fromDict(null)
-	if empty_result.accepted or empty_result.state == null or empty_result.evidence == null:
+	if empty_result.accepted or empty_result.sus or empty_result.state == null or empty_result.evidence == null:
 		_fail("an empty submit result must carry empty state and evidence")
 		return
 	var player_state := HorizonValidatedPlayerState.fromDict({

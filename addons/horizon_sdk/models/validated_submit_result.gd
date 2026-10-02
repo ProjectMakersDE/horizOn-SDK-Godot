@@ -5,7 +5,8 @@
 ## (POST /api/v1/app/validated-actions/submit). Horizon.validatedActions
 ## returns it as Dictionary (toDict()); this class is the null safe
 ## mapping. `state` belongs to Part 2 (TASK-887) and `evidence` to
-## Part 3 (TASK-888); both are empty in Part 1.
+## Part 3 (TASK-888); both are empty in Part 1. `sus` (TASK-911) is
+## false on older servers.
 ## ============================================================
 class_name HorizonValidatedSubmitResult
 extends RefCounted
@@ -40,6 +41,12 @@ var state: HorizonValidatedPlayerState = HorizonValidatedPlayerState.new()
 ## Evidence request [Part 3], required = false in Part 1
 var evidence: HorizonValidatedEvidenceRequest = HorizonValidatedEvidenceRequest.new()
 
+## [TASK-911] True when the accepted run crossed a soft threshold of the rules.
+## Not a rejection: the score counts. The server keeps the run with its start
+## context for a review and requests the input log through `evidence`. The
+## reasons stay on the server. False when absent (older servers).
+var sus: bool = false
+
 
 ## Create a result from the JSON response.
 ## Null safe: null strings become "", null numbers 0, null `state`
@@ -65,6 +72,8 @@ static func fromDict(data: Variant) -> HorizonValidatedSubmitResult:
 	result.durationSeconds = _int(data.get("durationSeconds"))
 	result.state = HorizonValidatedPlayerState.fromDict(data.get("state"))
 	result.evidence = HorizonValidatedEvidenceRequest.fromDict(data.get("evidence"))
+	var susValue: Variant = data.get("sus")
+	result.sus = susValue if susValue is bool else false
 	return result
 
 
@@ -81,7 +90,8 @@ func toDict() -> Dictionary:
 		"rank": rank,
 		"durationSeconds": durationSeconds,
 		"state": state.toDict(),
-		"evidence": evidence.toDict()
+		"evidence": evidence.toDict(),
+		"sus": sus
 	}
 
 

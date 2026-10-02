@@ -288,9 +288,32 @@ Horizon.validatedActions.discardRun()     # drop it without submitting
 
 A ticket is single use. After an accepted run, a `422` rejection (ticket and rule codes) and `403 SCORE_LIMIT_REACHED` the current run is cleared. `LEADERBOARD_MISMATCH` (`422`), `LEADERBOARD_NOT_FOUND` (`404`), `SCORE_REQUIRED` and `PLAYER_NAME_REQUIRED` (`400`) are checked before the server consumes the ticket, so the run stays and you may fix the request and submit again with the same ticket. After network errors, `401`, `429` and `503` it stays as well, and after `403 PLAYER_BANNED` (checked before the ticket is used; call `discardRun()` to give the run up). A new ticket needs a new `startRun()`. Sign-out also clears the run. After an accepted board run the leaderboard cache is cleared.
 
-Error codes from `getLastErrorCode()` and the `*_failed` signals: local `SESSION_REQUIRED`, `NO_ACTIVE_RUN`, `INVALID_INPUT_LOG_HASH`; ticket `TICKET_INVALID`, `TICKET_EXPIRED`, `TICKET_FOREIGN`, `TICKET_CONSUMED`, `LEADERBOARD_MISMATCH`; rules `STAGE_REQUIRED`, `STAGE_UNKNOWN`, `SCORE_ABOVE_MAX`, `SCORE_BELOW_MIN`, `STAGE_SCORE_ABOVE_MAX`, `STAGE_SCORE_BELOW_MIN`, `DURATION_TOO_SHORT`, `SCORE_RATE_TOO_HIGH`; values `UNKNOWN_VALUE_KEY`, `DUPLICATE_VALUE_KEY`, `EARNED_ABOVE_MAX`, `EARNED_BELOW_MIN`, `INSUFFICIENT_BALANCE`; others `SCORE_REQUIRED`, `PLAYER_NAME_REQUIRED`, `SCORE_LIMIT_REACHED`, `SESSION_FORBIDDEN`, `PLAYER_NOT_FOUND`, `LEADERBOARD_NOT_FOUND`, `RUN_RATE_LIMITED` and `RUN_CAPACITY_REACHED` (`429`, not retried automatically, the wait can be an hour), `VALIDATED_ACTIONS_UNAVAILABLE`, `PLAYER_BANNED` (`403`, the account banned the player from the board), `NOT_SUPPORTED`. Without a server code the SDK error name is used (for example `NETWORK_ERROR`).
+Error codes from `getLastErrorCode()` and the `*_failed` signals: local `SESSION_REQUIRED`, `NO_ACTIVE_RUN`, `INVALID_INPUT_LOG_HASH`, `INVALID_CONTENT_DIGEST`; run start context `INITIAL_STATE_INVALID_ENCODING` (`400`), `INITIAL_STATE_TOO_LARGE` (`413`); ticket `TICKET_INVALID`, `TICKET_EXPIRED`, `TICKET_FOREIGN`, `TICKET_CONSUMED`, `LEADERBOARD_MISMATCH`; rules `STAGE_REQUIRED`, `STAGE_UNKNOWN`, `SCORE_ABOVE_MAX`, `SCORE_BELOW_MIN`, `STAGE_SCORE_ABOVE_MAX`, `STAGE_SCORE_BELOW_MIN`, `DURATION_TOO_SHORT`, `SCORE_RATE_TOO_HIGH`; values `UNKNOWN_VALUE_KEY`, `DUPLICATE_VALUE_KEY`, `EARNED_ABOVE_MAX`, `EARNED_BELOW_MIN`, `INSUFFICIENT_BALANCE`; others `SCORE_REQUIRED`, `PLAYER_NAME_REQUIRED`, `SCORE_LIMIT_REACHED`, `SESSION_FORBIDDEN`, `PLAYER_NOT_FOUND`, `LEADERBOARD_NOT_FOUND`, `RUN_RATE_LIMITED` and `RUN_CAPACITY_REACHED` (`429`, not retried automatically, the wait can be an hour), `VALIDATED_ACTIONS_UNAVAILABLE`, `PLAYER_BANNED` (`403`, the account banned the player from the board), `NOT_SUPPORTED`. Without a server code the SDK error name is used (for example `NETWORK_ERROR`).
 
 A leaderboard with **Validated submissions only** (`validatedOnly: true` in `listBoards()`) refuses `submitScore()`: it returns `false` and `Horizon.leaderboard.getLastErrorCode()` is `VALIDATED_SUBMIT_REQUIRED`. A player the account banned from a board gets `PLAYER_BANNED` from `submitScore()` and from the validated submit; neither is retried.
+
+#### Run start context and sus runs
+
+`startRun()` takes an optional context Dictionary: what the run starts from. Every key is optional; empty values are not sent, and without any value the request stays the old one.
+
+```gdscript
+var context := {
+    "game_version": "1.4.2",                 # at most 64 printable ASCII characters
+    "content_version": "levels-7",
+    "simulation_version": "sim-3",
+    "replay_format_version": "inputs-v1",
+    "content_digest": HorizonValidatedActions.computeInputLogHash(level_bytes),  # SHA-256, 64 hex
+    "initial_state": initial_state_bytes,    # PackedByteArray, sent as base64
+}
+var run: Dictionary = await Horizon.validatedActions.startRun("weekly", context)
+
+# Or set the versions once; used whenever startRun() gets no context (no merge with a passed one)
+Horizon.validatedActions.default_run_context = {"game_version": "1.4.2"}
+```
+
+The keys map to the JSON fields `gameVersion`, `contentVersion`, `simulationVersion`, `replayFormatVersion`, `contentDigest` and `initialState`. The server binds the context to the run together with what it fixes itself (rule version, cloud save, server-owned values, seed, start time). A `content_digest` that is not 64 hex characters fails locally with `INVALID_CONTENT_DIGEST`; the server answers `INITIAL_STATE_TOO_LARGE` (`413`, above the game's evidence size limit) or `INITIAL_STATE_INVALID_ENCODING` (`400`).
+
+`result["sus"]` is `true` when an accepted run crossed a soft threshold of the rules. The score counts; the server keeps the run with its start context for a review and requests the input log through `result["evidence"]`, which the SDK uploads on its own after `submitValidated()`, like a top N record. The reasons stay on the server. Older servers do not send the field (`false`).
 
 #### Server-owned player state
 
