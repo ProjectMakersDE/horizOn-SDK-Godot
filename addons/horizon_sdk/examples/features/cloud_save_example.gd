@@ -2,7 +2,9 @@
 ## horizOn SDK - Cloud Save Minimal Example
 ## ============================================================
 ## What it does: signs in anonymously, saves a small progress
-## Dictionary to the cloud, then loads it back.
+## Dictionary to the cloud, then loads it back. Then saves again
+## against the loaded revision, as a game does that runs on
+## several devices.
 ## App key: imported via Project > Tools > horizOn: Import Config.
 ## Start path: attach this script to a Node and run the scene, or
 ## run it via the shared examples runner (features_runner.tscn).
@@ -48,3 +50,23 @@ func _ready() -> void:
 		print("No cloud save found yet.")
 		return
 	print("Loaded progress: level %d, coins %d" % [loaded.get("level", 0), loaded.get("coins", 0)])
+
+	# Several devices: load a snapshot with its revision, then save only while
+	# the cloud save is still at that revision. On a conflict another device
+	# saved first: nothing was written, load again and decide.
+	var snapshot: Dictionary = await horizon.cloudSave.loadSnapshot()
+	if not snapshot["success"]:
+		push_error("Snapshot failed: %s" % snapshot["error"])
+		return
+	# Change the data of this snapshot, not an older copy: only the snapshot's
+	# data belongs to its revision.
+	var current: Variant = JSON.parse_string(snapshot["data"]) if snapshot["found"] else {}
+	var progressNow: Dictionary = current if current is Dictionary else {}
+	progressNow["coins"] = int(progressNow.get("coins", 0)) + 10
+	var result: Dictionary = await horizon.cloudSave.saveDataAtRevision(JSON.stringify(progressNow), snapshot["revision"])
+	if result["conflict"]:
+		print("Another device saved first. Load the new snapshot and merge.")
+	elif result["success"]:
+		print("Saved at revision %d." % result["revision"])
+	else:
+		push_error("Save failed: %s" % result["error"])

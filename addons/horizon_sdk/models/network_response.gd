@@ -26,6 +26,10 @@ var errorCode: int = 0
 ## "COSMETIC_LOCKED"). Empty when the server sent none.
 var serverCode: String = ""
 
+## Response headers as "Name: value" lines, set on success and on HTTP errors.
+## Empty when no response arrived.
+var headers: PackedStringArray = PackedStringArray()
+
 
 ## Create a successful response.
 ## @param response_data The response data
@@ -52,6 +56,26 @@ static func failure(error_message: String, status: int = 0, code: int = HorizonE
 	response.statusCode = status
 	response.errorCode = code
 	return response
+
+
+## Get a response header value, matching the name case-insensitively.
+## @param name Header name, e.g. "X-Cloud-Save-Revision"
+## @return The trimmed value, or "" when the header is missing
+func getHeader(name: String) -> String:
+	return findHeader(headers, name)
+
+
+## Find a header value in "Name: value" lines, matching the name case-insensitively.
+## @param header_lines Headers as delivered by HTTPRequest.request_completed
+## @param name Header name
+## @return The trimmed value, or "" when the header is missing
+static func findHeader(header_lines: PackedStringArray, name: String) -> String:
+	var wanted := name.to_lower()
+	for line in header_lines:
+		var parts := line.split(":", true, 1)
+		if parts.size() == 2 and parts[0].strip_edges().to_lower() == wanted:
+			return parts[1].strip_edges()
+	return ""
 
 
 ## Get data as a Dictionary (with null safety).

@@ -184,6 +184,21 @@ await Horizon.cloudSave.saveBytes(my_bytes)
 var bytes: PackedByteArray = await Horizon.cloudSave.loadBytes()
 ```
 
+**Saving from several devices.** The plain save methods overwrite whatever is stored. When a player plays on more than one device, load a snapshot with its revision and save against that revision. The server writes only while the save is still at that revision. Otherwise it answers HTTP 409, nothing is written and the result is `STATUS_CONFLICT`. The SDK never retries or overwrites a conflict: load again, merge or let the player choose, then save with the new revision.
+
+```gdscript
+var snapshot: Dictionary = await Horizon.cloudSave.loadSnapshot()  # or loadBytesSnapshot()
+if snapshot["success"]:
+	# Build new_json from snapshot["data"]: only the snapshot's data belongs to its revision.
+	var result: Dictionary = await Horizon.cloudSave.saveDataAtRevision(new_json, snapshot["revision"])  # or saveBytesAtRevision()
+	if result["conflict"]:
+		pass  # another device saved first: load a new snapshot and decide
+	elif result["success"]:
+		var next_revision: int = result["revision"]  # pass it to the next save
+```
+
+`revision` is `0` for an empty slot. It is `HorizonCloudSave.REVISION_UNKNOWN` (`-1`) when the server sends no revision, for example a self-hosted simpleServer: the state is then unknown, not empty, and the server does not detect conflicts.
+
 ### Remote Config
 
 ```gdscript
@@ -511,6 +526,7 @@ Horizon.validatedActions.evidence_upload_failed.connect(func(run_id, error, code
 # Cloud Save
 Horizon.cloudSave.data_saved.connect(func(size): print("Saved %d bytes" % size))
 Horizon.cloudSave.data_loaded.connect(func(data): print("Loaded"))
+Horizon.cloudSave.save_conflict.connect(func(error): print("Conflict: %s" % error))
 
 # Crash Reporting
 Horizon.crashes.crash_reported.connect(func(fingerprint): print("Crash reported: %s" % fingerprint))

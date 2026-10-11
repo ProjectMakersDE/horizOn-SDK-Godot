@@ -241,9 +241,10 @@ func getAsync(endpoint: String, useSessionToken: bool = false) -> HorizonNetwork
 ## @param endpoint The API endpoint
 ## @param data Request body data (will be JSON-encoded)
 ## @param useSessionToken Whether to include Authorization header
+## @param extraHeaders Additional request headers as "Name: value" lines (e.g. If-Match)
 ## @return Network response
-func postAsync(endpoint: String, data: Dictionary = {}, useSessionToken: bool = false) -> HorizonNetworkResponse:
-	return await _sendRequest(endpoint, HTTPClient.METHOD_POST, data, useSessionToken)
+func postAsync(endpoint: String, data: Dictionary = {}, useSessionToken: bool = false, extraHeaders: PackedStringArray = PackedStringArray()) -> HorizonNetworkResponse:
+	return await _sendRequest(endpoint, HTTPClient.METHOD_POST, data, useSessionToken, extraHeaders)
 
 
 ## Make a PUT request with JSON body.
@@ -268,9 +269,10 @@ func deleteAsync(endpoint: String, useSessionToken: bool = false) -> HorizonNetw
 ## @param endpoint The API endpoint
 ## @param binaryData Raw bytes to send
 ## @param useSessionToken Whether to include Authorization header
+## @param extraHeaders Additional request headers as "Name: value" lines (e.g. If-Match)
 ## @return Network response
-func postBinaryAsync(endpoint: String, binaryData: PackedByteArray, useSessionToken: bool = false) -> HorizonNetworkResponse:
-	return await _sendBinaryRequest(endpoint, binaryData, useSessionToken)
+func postBinaryAsync(endpoint: String, binaryData: PackedByteArray, useSessionToken: bool = false, extraHeaders: PackedStringArray = PackedStringArray()) -> HorizonNetworkResponse:
+	return await _sendBinaryRequest(endpoint, binaryData, useSessionToken, extraHeaders)
 
 
 ## Make a GET request expecting binary response.
@@ -283,7 +285,8 @@ func getBinaryAsync(endpoint: String, useSessionToken: bool = false) -> Dictiona
 
 ## Make a POST request with a JSON body expecting a binary response.
 ## Cloud Save load requires application/json input and application/octet-stream output.
-## @return Dictionary with "success", "found", "data" and "error"
+## @return Dictionary with "success", "found", "data", "error", "statusCode" and
+##         "headers" (response headers as "Name: value" lines, empty without a response)
 func postJsonForBinaryAsync(endpoint: String, data: Dictionary, useSessionToken: bool = false) -> Dictionary:
 	return await _sendBinaryResponseRequest(endpoint, HTTPClient.METHOD_POST, data, useSessionToken)
 
@@ -302,7 +305,7 @@ func _methodName(method: int) -> String:
 
 
 ## Internal request handler with retry logic.
-func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionToken: bool) -> HorizonNetworkResponse:
+func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionToken: bool, extraHeaders: PackedStringArray = PackedStringArray()) -> HorizonNetworkResponse:
 	if activeHost.is_empty():
 		return HorizonNetworkResponse.failure(
 			"No active host. Call connect() first.",
@@ -330,6 +333,7 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 
 		if useSessionToken and not sessionToken.is_empty():
 			headers.append("Authorization: Bearer " + sessionToken)
+		headers.append_array(extraHeaders)
 
 		# Build body
 		var bodyJson := ""
@@ -389,6 +393,7 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 				request_failed.emit(url, limitMsg)
 				var limited := HorizonNetworkResponse.failure(limitMsg, responseCode, HorizonErrorCodes.ErrorCode.API_RATE_LIMITED)
 				limited.serverCode = limitCode
+				limited.headers = responseHeaders
 				return limited
 			if attemptCount < maxAttempts:
 				_logger.warning("Rate limited. Retrying after %.1f seconds..." % retryAfter)
@@ -398,11 +403,13 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 			var rateLimitMsg := _rateLimitMessage(retryAfter)
 			_logger.error("Request failed: %s %s - %s" % [_methodName(method), url, rateLimitMsg])
 			request_failed.emit(url, rateLimitMsg)
-			return HorizonNetworkResponse.failure(
+			var rateLimited := HorizonNetworkResponse.failure(
 				rateLimitMsg,
 				responseCode,
 				HorizonErrorCodes.ErrorCode.API_RATE_LIMITED
 			)
+			rateLimited.headers = responseHeaders
+			return rateLimited
 
 		# Handle server errors (5xx) - retry
 		if responseCode >= 500:
@@ -422,6 +429,7 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 			request_failed.emit(url, errorMsg)
 			var failed := HorizonNetworkResponse.failure(errorMsg, responseCode, errorCode)
 			failed.serverCode = _parseServerErrorCode(bodyText)
+			failed.headers = responseHeaders
 			return failed
 
 		# Success - parse JSON response
@@ -439,6 +447,7 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 			parsed = {"success": true, "message": trimmed}
 
 		var response := HorizonNetworkResponse.success(parsed if parsed != null else {}, responseCode)
+		response.headers = responseHeaders
 		request_completed.emit(url, response)
 		return response
 
@@ -451,7 +460,7 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 
 
 ## Send binary POST request.
-func _sendBinaryRequest(endpoint: String, binaryData: PackedByteArray, useSessionToken: bool) -> HorizonNetworkResponse:
+func _sendBinaryRequest(endpoint: String, binaryData: PackedByteArray, useSessionToken: bool, extraHeaders: PackedStringArray = PackedStringArray()) -> HorizonNetworkResponse:
 	if activeHost.is_empty():
 		return HorizonNetworkResponse.failure(
 			"No active host. Call connect() first.",
@@ -471,6 +480,7 @@ func _sendBinaryRequest(endpoint: String, binaryData: PackedByteArray, useSessio
 
 	if useSessionToken and not sessionToken.is_empty():
 		headers.append("Authorization: Bearer " + sessionToken)
+	headers.append_array(extraHeaders)
 
 	var error := http.request_raw(url, headers, HTTPClient.METHOD_POST, binaryData)
 	if error != OK:
@@ -492,11 +502,15 @@ func _sendBinaryRequest(endpoint: String, binaryData: PackedByteArray, useSessio
 		var errorMsg := _parseErrorMessage(bodyText, responseCode)
 		if responseCode == HorizonErrorCodes.HTTP_RATE_LIMITED:
 			errorMsg = _rateLimitMessage(_retryAfterSeconds(result[2]))
-		return HorizonNetworkResponse.failure(errorMsg, responseCode, HorizonErrorCodes.fromHttpStatus(responseCode))
+		var failed := HorizonNetworkResponse.failure(errorMsg, responseCode, HorizonErrorCodes.fromHttpStatus(responseCode))
+		failed.headers = result[2]
+		return failed
 
 	var bodyText := body.get_string_from_utf8()
 	var parsed := JSON.parse_string(bodyText)
-	return HorizonNetworkResponse.success(parsed if parsed != null else {}, responseCode)
+	var response := HorizonNetworkResponse.success(parsed if parsed != null else {}, responseCode)
+	response.headers = result[2]
+	return response
 
 
 ## Send a request expecting a binary response.
@@ -532,6 +546,7 @@ func _sendBinaryResponseRequest(endpoint: String, method: int, data: Dictionary,
 
 	var resultCode: int = result[0]
 	var responseCode: int = result[1]
+	var responseHeaders: PackedStringArray = result[2]
 	var body: PackedByteArray = result[3]
 
 	if resultCode != HTTPRequest.RESULT_SUCCESS:
@@ -539,13 +554,13 @@ func _sendBinaryResponseRequest(endpoint: String, method: int, data: Dictionary,
 
 	# 204 No Content = not found
 	if responseCode == 204:
-		return {"success": true, "found": false, "data": PackedByteArray(), "error": ""}
+		return {"success": true, "found": false, "data": PackedByteArray(), "error": "", "statusCode": responseCode, "headers": responseHeaders}
 
 	if responseCode >= 400:
-		var errorMsg: String = _rateLimitMessage(_retryAfterSeconds(result[2])) if responseCode == HorizonErrorCodes.HTTP_RATE_LIMITED else "HTTP %d" % responseCode
-		return {"success": false, "found": false, "data": PackedByteArray(), "error": errorMsg}
+		var errorMsg: String = _rateLimitMessage(_retryAfterSeconds(responseHeaders)) if responseCode == HorizonErrorCodes.HTTP_RATE_LIMITED else "HTTP %d" % responseCode
+		return {"success": false, "found": false, "data": PackedByteArray(), "error": errorMsg, "statusCode": responseCode, "headers": responseHeaders}
 
-	return {"success": true, "found": true, "data": body, "error": ""}
+	return {"success": true, "found": true, "data": body, "error": "", "statusCode": responseCode, "headers": responseHeaders}
 
 
 ## Convert dictionary to JSON, excluding empty string values.
