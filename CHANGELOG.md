@@ -1,3 +1,10 @@
+# [1.10.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.9.0...v1.10.0) (2026-10-11)
+
+
+### Features
+
+* **cloud-save:** revision-checked saves for several devices ([26d9f8d](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/26d9f8d3e9b55a39245722140391c0d5e9bd6b3b))
+
 # [1.9.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.8.0...v1.9.0) (2026-10-02)
 
 
