@@ -654,7 +654,7 @@ addons/horizon_sdk/
 ## Support
 
 - 📖 **Documentation**: [horizon.pm/quickstart](https://horizon.pm/quickstart)
-- 💬 **Discord**: [discord.gg/horizOn](https://discord.gg/JFmaXtguku)
+- 💬 **Discord**: [discord.gg/JFmaXtguku](https://discord.gg/JFmaXtguku)
 - 🐛 **Issues**: [GitHub Issues](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/issues)
 
 ## License

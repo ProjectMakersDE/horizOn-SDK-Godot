@@ -565,7 +565,7 @@ entry.languageCode # e.g., "en"
 ## Support
 
 - Documentation: https://horizon.pm/quickstart
-- Discord: https://discord.gg/projectmakers
+- Discord: https://discord.gg/JFmaXtguku
 - Issues: https://github.com/ProjectMakersDE/horizOn-SDK-Godot/issues
 
 ## License
