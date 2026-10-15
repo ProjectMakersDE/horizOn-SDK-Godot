@@ -52,6 +52,7 @@ var localization: HorizonLocalization
 var news: HorizonNews
 var giftCodes: HorizonGiftCodes
 var playerProfile: HorizonPlayerProfile
+var statistics: HorizonStatistics
 var validatedActions: HorizonValidatedActions
 var feedback: HorizonFeedback
 var userLogs: HorizonUserLogs
@@ -160,6 +161,10 @@ func _initializeManagers() -> void:
 	# Cloud Save
 	cloudSave = HorizonCloudSave.new()
 	cloudSave.initialize(_http, _logger, auth)
+
+	# Statistics
+	statistics = HorizonStatistics.new()
+	statistics.initialize(_http, _logger, auth)
 
 	# Remote Config
 	remoteConfig = HorizonRemoteConfig.new()

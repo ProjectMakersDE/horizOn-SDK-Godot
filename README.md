@@ -25,6 +25,7 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https
 | 📰 **News** | In-game news and announcements |
 | 🎁 **Gift Codes** | Validate and redeem promotional codes, unlock cosmetics |
 | 🧑 **Player Profile** | Avatar, frame and badges per player, shown on leaderboards |
+| 📈 **Statistics** | One session batch for sum/max/min/last counters with optional UTC daily/weekly resets |
 | ✅ **Validated Actions** | Server-checked runs: single-use tickets, server seed, rule checks before a score is written |
 | 💬 **Feedback** | Submit bug reports and feature requests |
 | 📊 **User Logs** | Server-side player event tracking |
@@ -396,6 +397,58 @@ if not result.is_empty() and result["evidence"]["required"]:
 - Retry only after `EVIDENCE_HASH_MISMATCH` (with the correct bytes) or `NETWORK_ERROR`: `HorizonValidatedActions.isEvidenceRetryable(code)`. Every other code is final. An upload failure never affects the accepted score.
 
 See `examples/features/validated_evidence_example.gd`.
+
+### Statistics
+
+Define `kills` (sum) and `best_score` (max) for the project in the Dashboard. Sign in, then
+load a snapshot explicitly when the game needs its values/catalog; sign-in never fetches it.
+
+```gdscript
+var snapshot: Dictionary = await Horizon.statistics.getStatistics()
+if snapshot.is_empty():
+    return
+var operation: String = Horizon.statistics.createOperationId() # once, persist with the batch
+var updates: Array = [{"key":"kills","value":3}, {"key":"best_score","value":250}]
+var result: Dictionary = await Horizon.statistics.updateStatistics(updates, operation)
+if result.is_empty():
+    push_warning(Horizon.statistics.getLastErrorCode())
+```
+
+| Method | Result |
+|---|---|
+| `getStatistics()` | Snapshot Dictionary or `{}`; GET `/api/v1/app/statistics?userId=` |
+| `getDefinitions()` | `{definitionVersion,definitions}` or `{}`; GET `/statistics/definitions` |
+| `updateStatistics(updates, operation_id)` | Atomic snapshot plus original ID/replayed; POST `/statistics` |
+| `createOperationId()` | Timestamp:UUID, corrected by the last snapshot's server time |
+| `getCurrentStatistics()`, `getCurrentDefinitions()` | Copies of the accepted caches |
+| `getLastErrorCode()`, `getLastSubmittedOperationId()` | Stable code and original submitted ID |
+| `clearCache()` | Clears data and invalidates pending conditional reads |
+
+Signals: `statistics_loaded`, `statistics_updated`, `definitions_loaded`, and
+`statistics_failed(message, code)`. Every request uses the matching current player's Bearer
+session. Caches clear on session/project/host change; late replies cannot overwrite a newer
+revision or UTC projection, even after catalog changes. Conditional catalog reads are folded
+from cache. Snapshots expose `values` (`key`, integer `value`, `hasValue`, `period`), revision,
+definition version, operation window and `newlyUnlocked` for achievement integration.
+
+Request values must be Godot `int`, within ±9,007,199,254,740,991; floats/strings and duplicate
+keys fail before sending. JSON response integers are normalized back to exact `int` values.
+Unset counters are zero with `hasValue:false`. An optional positive `maxPerUpdate` bounds the
+absolute reported value. Daily/weekly resets use UTC midnight/ISO Monday without player jobs.
+
+Persist the ID and original batch before sending. After timeout, inspect a snapshot and retry
+the same ID; the SDK never invents another. Retained IDs replay the current snapshot; another
+payload returns `OPERATION_CONFLICT`. Only eight receipts are retained. Unknown IDs must be
+within 24 hours, at most 30 seconds ahead and newer than a persistent eviction floor; delayed
+or out-of-order IDs can expire sooner with `OPERATION_EXPIRED`. Reconcile an uncertain expired
+intent instead of reporting the session again. `STATE_CONFLICT` requests a fresh snapshot and
+retry of the original ID; other codes include `UPDATE_ABOVE_LIMIT`, `VALUE_OVERFLOW`,
+`UNKNOWN_STATISTIC`, session errors and `RATE_LIMITED`.
+
+`examples/features/statistics_example.gd` preserves pending batches with binary Variant
+storage, retaining `int64` types across restart. JSON.parse_string loads JSON numbers as
+floats, so convert and validate them explicitly before constructing a fresh report. The same
+app API is supported by simpleServer with SQL-configured definitions.
 
 ### Feedback
 
