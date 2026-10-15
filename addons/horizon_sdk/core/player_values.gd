@@ -29,6 +29,23 @@ func getCurrentOffers() -> Dictionary:
 	_syncIdentity()
 	return _offers.duplicate(true)
 
+## Adopt a complete state from another authenticated feature (for example an Inbox claim).
+## The caller must validate the original JSON integer tokens before invoking this method.
+func acceptServerState(user_id: String, raw: Variant) -> bool:
+	if not _begin(user_id):
+		return false
+	var state: Dictionary = _normalizeState(raw)
+	if state.is_empty() or state.userId != user_id or int(state.revision) < _revision or int(state.definitionVersion) < _definition or _timeMillis(state.operationWindow.serverTime) < _serverMillis:
+		return false
+	if int(state.definitionVersion) > _definition:
+		_offers.clear()
+	_revision = int(state.revision)
+	_definition = int(state.definitionVersion)
+	_acceptClock(state.operationWindow.serverTime)
+	_state = state.duplicate(true)
+	lastErrorCode = ""
+	return true
+
 func clearCache() -> void:
 	_syncIdentity()
 	_epoch += 1

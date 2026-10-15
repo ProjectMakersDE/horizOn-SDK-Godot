@@ -26,6 +26,7 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https
 | 🎁 **Gift Codes** | Validate and redeem promotional codes, unlock cosmetics |
 | 🧑 **Player Profile** | Avatar, frame and badges per player, shown on leaderboards |
 | 📈 **Statistics** | One session batch for sum/max/min/last counters with optional UTC daily/weekly resets |
+| 📬 **Inbox** | Bounded personal/project notifications, read/remove and atomic Player Values claims |
 | ✅ **Validated Actions** | Server-checked runs: single-use tickets, server seed, rule checks before a score is written |
 | 💬 **Feedback** | Submit bug reports and feature requests |
 | 📊 **User Logs** | Server-side player event tracking |
@@ -397,6 +398,58 @@ if not result.is_empty() and result["evidence"]["required"]:
 - Retry only after `EVIDENCE_HASH_MISMATCH` (with the correct bytes) or `NETWORK_ERROR`: `HorizonValidatedActions.isEvidenceRetryable(code)`. Every other code is final. An upload failure never affects the accepted score.
 
 See `examples/features/validated_evidence_example.gd`.
+
+### Inbox
+
+After signing in, load notifications explicitly when opening the inbox or returning to the
+game. The SDK does not start a poll loop. Respect `pollAfterSeconds` before a later lifecycle
+refresh; optional realtime events only invalidate this cache, then HTTP reloads the contents.
+
+```gdscript
+var user_id: String = Horizon.auth.getCurrentUser().userId
+var cached: Dictionary = Horizon.inbox.getCurrentInbox()
+var result: Dictionary = await Horizon.inbox.getInbox(user_id, cached.get("cursor", ""))
+if result.success:
+    render_entries(result.data.entries) # complete entries, including unchanged=true
+
+# On an explicit player action, persist the selected entry ID before HTTP.
+var claimed: Dictionary = await Horizon.inbox.claim(user_id, selected_entry_id)
+if claimed.success:
+    render_balances(claimed.data.playerValues.values) # authoritative replacement, never add deltas
+```
+
+| Method | Result |
+|---|---|
+| `getInbox(user_id, since="")` | GET snapshot; opaque cursor is used only when its full cache is available |
+| `markRead(user_id, entry_id)` | POST `/inbox/read`; idempotent snapshot |
+| `remove(user_id, entry_id)` | POST `/inbox/remove`; protects unclaimed rewards |
+| `claim(user_id, entry_id)` | POST `/inbox/claim`; `{entryId,replayed,inbox,playerValues}` |
+| `getCurrentInbox()`, `clearCache()` | Defensive cache copy; invalidation also fences in-flight replies |
+| `getLastErrorCode()` | Last local/server error code |
+
+All four async methods return `{success,data,errorCode,error}`. The current player's signed
+session and project key are required. Signals are `inbox_loaded(snapshot)`,
+`inbox_updated(snapshot)`, `entry_claimed(result)` and `inbox_failed(error,code)`.
+Snapshots include `userId`, `cursor`, `revision`, `broadcastRevision`, `serverTime`,
+`pollAfterSeconds`, `unchanged`, complete `entries`, `counts` and effective `limits`.
+An `unchanged` wire response contains no entries; the SDK materializes the complete cached
+entries. Expiry may change the cursor with the same revision. Overdue unclaimed reward
+entries stay visible and count toward capacity, as determined by the server.
+
+Requests serialize, including necessary follow-up reads. Mutations invalidate the old cache;
+session, player, host or project changes fence old/queued responses. Independent revision and
+server-time watermarks survive cache invalidation. JSON integer tokens are checked before
+conversion, preserving safe 64-bit values through 9,007,199,254,740,991.
+
+After an uncertain claim, retry **the same entry ID**. There is no caller-selected amount,
+recipient or new operation ID. The SDK adopts the complete `playerValues` snapshot; it never
+adds attachment values to a local balance. `STATE_CONFLICT` and network errors remain
+explicit; there is no automatic replacement booking. Admin broadcast/support routes stay
+in the Dashboard/MCP, outside the app SDK. See `examples/features/inbox_example.gd`.
+
+The Player Values purchase example stores pending intents by **project key + player**.
+Configured legacy regional-host files migrate with the original ID/payload; conflicting IDs
+or an unrecognised old-host intent block and retain the files for reconciliation.
 
 ### Statistics
 

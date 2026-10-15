@@ -1,4 +1,5 @@
 extends Node
+const PendingPurchase = preload("res://addons/horizon_sdk/examples/features/pending_purchase.gd")
 ## Configure an energy-pack offer in the Dashboard. This example purchases once per new intent.
 ## A lost response keeps the original operation ID and immutable payload in user://.
 func _ready() -> void:
@@ -14,27 +15,21 @@ func _ready() -> void:
 	var values: HorizonPlayerValues = horizon.playerValues
 	var loaded: Dictionary = await values.getState(user_id)
 	if not loaded.success: return
-	var scope: String = horizon.getActiveHost() + "|" + horizon.getConfig().api_key + "|" + user_id
+	var scope: String = horizon.getConfig().api_key + "|" + user_id
 	var path: String = "user://horizon_values_pending_" + scope.sha256_text() + ".bin"
-	var pending: Dictionary
-	if FileAccess.file_exists(path):
-		var file := FileAccess.open(path, FileAccess.READ)
-		if file == null: return
-		var saved: Variant = file.get_var(false)
-		file.close()
-		if not saved is Dictionary or saved.get("userId") != user_id or not saved.get("operationId") is String or not saved.get("offerKey") is String:
-			push_error("Pending purchase needs reconciliation; file retained")
-			return
-		pending = saved
-	else:
+	var legacy_paths: Array[String] = []
+	var hosts: PackedStringArray = horizon.getConfig().hosts.duplicate()
+	if not hosts.has(horizon.getActiveHost()): hosts.append(horizon.getActiveHost())
+	for host: String in hosts:
+		legacy_paths.append("user://horizon_values_pending_" + (host + "|" + scope).sha256_text() + ".bin")
+	var saved: Dictionary = PendingPurchase.load_pending(path, legacy_paths, user_id)
+	if not saved.success:
+		push_error("Pending purchases need reconciliation; original files retained")
+		return
+	var pending: Dictionary = saved.pending
+	if pending.is_empty():
 		pending = {"userId": user_id, "offerKey": "energy-pack", "operationId": values.createOperationId()}
-		var file := FileAccess.open(path, FileAccess.WRITE)
-		if file == null: return
-		file.store_var(pending, false)
-		file.flush()
-		var error := file.get_error()
-		file.close()
-		if error != OK: return
+		if not PendingPurchase.store(path, pending): return
 	var result: Dictionary = await values.purchase(pending.userId, pending.offerKey, pending.operationId)
 	if not result.state.is_empty(): print(result.state.values)
 	if result.success:
