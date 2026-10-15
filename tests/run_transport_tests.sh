@@ -23,6 +23,9 @@ user_data_dir="$("$GODOT_BIN" --headless --path "$test_dir" --script "$test_dir/
 cd "$test_dir"
 "$GODOT_BIN" --headless --editor --path . --quit
 "$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/statistics_example.gd
+"$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/player_values_example.gd
+"$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/inbox_example.gd
+"$GODOT_BIN" --headless --path . --script tests/pending_purchase_test.gd
 
 # Runs one Godot contract script against its mock server.
 # $1: mock server script, $2: Godot test script
@@ -65,6 +68,9 @@ run_contract tests/mock_player_values_server.py tests/player_values_transport_te
 run_contract tests/mock_validated_actions_server.py tests/validated_actions_transport_test.gd
 run_contract tests/mock_auth_server.py tests/auth_transport_test.gd
 run_contract tests/mock_statistics_server.py tests/statistics_transport_test.gd
+run_contract tests/mock_inbox_server.py tests/inbox_transport_test.gd
+
+"$GODOT_BIN" --headless --path . --script tests/inbox_policy_test.gd
 
 "$GODOT_BIN" --headless --path . --script tests/realtime_policy_test.gd
 if [ -n "${HORIZON_REALTIME_FIXTURE_URL:-}" ]; then
