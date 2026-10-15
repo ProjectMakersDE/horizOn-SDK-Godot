@@ -25,6 +25,10 @@ var errorCode: int = 0
 ## Machine readable error code from the server body (`code` field, e.g.
 ## "COSMETIC_LOCKED"). Empty when the server sent none.
 var serverCode: String = ""
+## Original JSON error body for feature-owned error state.
+var errorBody: String = ""
+## Original successful JSON body, retained for exact integer-token validation.
+var rawBody: String = ""
 
 ## Response headers as "Name: value" lines, set on success and on HTTP errors.
 ## Empty when no response arrived.
