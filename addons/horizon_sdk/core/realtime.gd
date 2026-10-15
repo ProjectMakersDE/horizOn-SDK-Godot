@@ -18,6 +18,9 @@ var _socket: WebSocketPeer
 var _topics: Dictionary = {}
 var _sent: Dictionary = {}
 var _pending: String = ""
+var _requestId: int = 0
+var _pendingRequestId: int = 0
+var _pendingCanceled: bool = false
 var _clientId: String = ""
 var _token: String = ""
 var _userId: String = ""
@@ -57,8 +60,11 @@ func unsubscribe(topic: String) -> void:
 		return
 	_topics.erase(topic)
 	_sent.erase(topic)
+	if _pending == topic:
+		_pendingCanceled = true
 	if isReady:
-		_send({"type": "unsubscribe", "topic": topic})
+		_requestId += 1
+		_send({"type": "unsubscribe", "topic": topic, "requestId": _requestId})
 	if _topics.is_empty():
 		_disconnect()
 
@@ -113,7 +119,10 @@ func _process(_delta: float) -> void:
 					for topic: String in _topics:
 						if not _sent.has(topic):
 							_pending = topic
-							_send({"type": "subscribe", "topic": topic})
+							_pendingCanceled = false
+							_requestId += 1
+							_pendingRequestId = _requestId
+							_send({"type": "subscribe", "topic": topic, "requestId": _pendingRequestId})
 							break
 				if now >= _pingAt and _pending.is_empty():
 					_send({"type": "ping"})
@@ -173,13 +182,14 @@ func _handle(frame: Dictionary) -> void:
 			pollAfterSeconds = maxi(1, int(frame.get("pollAfterSeconds", 120)))
 			_pingAt = Time.get_ticks_msec() / 1000.0 + 30.0
 		"unsubscribed":
-			_sent.erase(str(frame.get("topic", "")))
-			if str(frame.get("topic", "")) == _pending:
+			if int(frame.get("requestId", 0)) == _pendingRequestId and str(frame.get("topic", "")) == _pending:
+				_sent.erase(_pending)
 				_pending = ""
 		"subscribed":
 			var topic: String = str(frame.get("topic", ""))
-			if topic == _pending:
-				_sent[topic] = true
+			if int(frame.get("requestId", 0)) == _pendingRequestId and topic == _pending:
+				if not _pendingCanceled and _topics.has(topic):
+					_sent[topic] = true
 				_pending = ""
 		"event":
 			if _topics.has(str(frame.get("topic", ""))):
@@ -197,8 +207,9 @@ func _handle(frame: Dictionary) -> void:
 						resync_required.emit(subscribed)
 			elif _topics.has(topic):
 				resync_required.emit(topic)
+			_send({"type": "ack", "eventId": str(frame.get("eventId", ""))})
 		"error":
-			if str(frame.get("code", "")) == "SUBSCRIPTION_FORBIDDEN":
+			if str(frame.get("code", "")) == "SUBSCRIPTION_FORBIDDEN" and int(frame.get("requestId", 0)) == _pendingRequestId:
 				var denied: String = str(frame.get("topic", ""))
 				_topics.erase(denied)
 				_sent.erase(denied)

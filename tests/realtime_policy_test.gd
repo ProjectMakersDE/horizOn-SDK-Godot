@@ -31,6 +31,18 @@ func _initialize() -> void:
 		push_error("late unsubscribe must clear confirmed state")
 		quit(1)
 		return
+	realtime._pending = "matches:0"
+	realtime._pendingRequestId = 3
+	realtime._pendingCanceled = false
+	realtime._handle({"type": "unsubscribed", "version": 1, "topic": "matches:0", "requestId": 2})
+	if realtime._pending != "matches:0":
+		push_error("old acknowledgement cleared a newer subscription")
+		quit(1)
+		return
+	realtime._handle({"type": "subscribed", "version": 1, "topic": "matches:0", "requestId": 3})
+	if not realtime._sent.has("matches:0"):
+		quit(1)
+		return
 	# Callbacks may close the manager while the global resync enumerates desired subscriptions.
 	realtime.resync_required.connect(func(_topic: String): realtime.close())
 	realtime._handle({"type": "resync_required", "version": 1})
