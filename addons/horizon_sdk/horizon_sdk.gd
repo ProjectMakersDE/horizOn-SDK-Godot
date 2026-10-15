@@ -315,9 +315,9 @@ func quickSignInAnonymous(display_name: String = "") -> bool:
 
 	# Try to restore existing session first
 	if auth.hasCachedAnonymousToken():
-		var restored := await auth.restoreAnonymousSession()
-		if restored:
-			return true
+		# A failed restore retains identity/progress. Creating another player requires
+		# an explicit decision by the game, never a fallback from an uncertain request.
+		return await auth.restoreAnonymousSession()
 
 	# Create new anonymous user
 	return await auth.signUpAnonymous(display_name)

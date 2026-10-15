@@ -334,6 +334,10 @@ func restoreAnonymousSession() -> bool:
 	if cachedToken.is_empty():
 		_logger.warning("No cached anonymous token found")
 		return false
+	if cachedToken.length() > 32:
+		_logger.warning("Stored anonymous identity needs reconciliation; original token retained")
+		signin_failed.emit("Stored anonymous identity needs reconciliation")
+		return false
 
 	_logger.info("Attempting to restore anonymous session...")
 	return await signInAnonymous(cachedToken)
@@ -591,15 +595,9 @@ func _saveAnonymousToken(token: String) -> void:
 ## @return The cached token, or empty string if not found
 func getCachedAnonymousToken() -> String:
 	var token := _loadFromStorage(CACHE_KEY_ANONYMOUS_TOKEN)
-	# Validate token length (API requires max 32 chars)
-	if not token.is_empty() and token.length() <= 32:
-		return token
-
-	if not token.is_empty():
-		_logger.warning("Cached anonymous token has invalid format. Clearing cache.")
-		clearAnonymousToken()
-
-	return ""
+	# Presence is identity evidence, even when an older token cannot be restored.
+	# Reading it must never erase the only link to existing player progress.
+	return token
 
 
 ## Clear cached anonymous token.

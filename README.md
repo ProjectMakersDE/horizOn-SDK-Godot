@@ -119,6 +119,12 @@ Horizon.disconnect_from_server()
 
 ### Authentication
 
+`quickSignInAnonymous()` restores an existing stored identity and returns `false` if that
+restore fails; it creates a player only when no anonymous identity is stored. Reading a
+cached token never deletes it, including unusable legacy tokens longer than 32 characters.
+Those fail restore locally and remain available for reconciliation. Only an explicit game
+decision to clear the identity may permit a new account; network/validation failures do not.
+
 ```gdscript
 # Email authentication
 await Horizon.auth.signUpEmail("user@example.com", "password", "Username")
