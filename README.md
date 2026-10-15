@@ -722,3 +722,22 @@ See [LICENSE](LICENSE) for details.
 After sign-in call `Horizon.realtime.subscribe("inbox:" + Horizon.auth.getCurrentUser().userId)`. Connect `resync_required` and `event_received` to the feature HTTP reload. `polling_required` requests an HTTP fallback after at least `pollAfterSeconds`; chat never polls. Call `unsubscribe(topic)` when no longer needed.
 
 Reconnect uses jitter and reauthorizes subscriptions. Events contain IDs and revisions only. Sign-out clears subscriptions; same-user token refresh reconnects automatically. simpleServer reports `NOT_SUPPORTED`; realtime is Cloud only.
+
+## Player values
+
+`Horizon.playerValues` exposes `getState(user_id)`, `getOffers(user_id)`, `purchase(user_id,offer_key,operation_id)`, `adjust(user_id,key,amount,reason,operation_id)` and `createOperationId()`. All calls require a matching signed-in session. State/mutation results are `{success,state,errorCode,error}`; offers use `data` instead of `state`. Business failures can include current balances.
+
+```gdscript
+var user_id: String = Horizon.auth.getCurrentUser().userId
+var loaded: Dictionary = await Horizon.playerValues.getState(user_id)
+if not loaded.success:
+    return
+var operation_id: String = Horizon.playerValues.createOperationId() # persist with the purchase intent
+var result: Dictionary = await Horizon.playerValues.purchase(user_id, "energy-pack", operation_id)
+if not result.state.is_empty():
+    print(result.state.values)
+if not result.success:
+    push_error(result.errorCode)
+```
+
+Retain the same operation ID and payload for retries after a timeout. Never generate another ID automatically after `OPERATION_EXPIRED`; refresh and reconcile first. IDs use learned server time plus monotonic elapsed time; local UTC is the fallback before loading state/offers (`hasServerClock() == false`). Amounts must be Godot `int` values within +/-9,007,199,254,740,991; float inputs and unsafe numeric response tokens are rejected. Values/costs/deltas return as int64 and nullable daily caps remain null (zero is a real cap). Cache getters return deep copies, revision/time watermarks survive catalogue invalidation and `clearCache()` rejects earlier in-flight requests. Session/project/host changes discard old state. Realtime is optional: refresh HTTP state after a validated run or another balance mutation. No automatic purchase/poll loop exists.

@@ -6,7 +6,14 @@ func _ready() -> void:
 	var horizon: Node = get_node_or_null("/root/Horizon")
 	if horizon == null:
 		push_error("Enable the horizOn SDK plugin and import configuration"); return
-	if not await horizon.connect_to_server() or not await horizon.quickSignInAnonymous("StatisticsPlayer"): return
+	if not await horizon.connect_to_server(): return
+	if not horizon.auth.isSignedIn():
+		if horizon.auth.hasCachedAnonymousToken():
+			if not await horizon.auth.restoreAnonymousSession():
+				push_error("Restore failed; saved identity and pending statistics retained")
+				return
+		elif not await horizon.auth.signUpAnonymous("StatisticsPlayer"):
+			return
 	var stats: HorizonStatistics = horizon.statistics
 	stats.statistics_failed.connect(func(message: String, code: String): push_warning("Statistics [%s]: %s" % [code,message]))
 	var snapshot: Dictionary = await stats.getStatistics()

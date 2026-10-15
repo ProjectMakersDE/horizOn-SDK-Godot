@@ -428,6 +428,7 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 			request_failed.emit(url, errorMsg)
 			var failed := HorizonNetworkResponse.failure(errorMsg, responseCode, errorCode)
 			failed.serverCode = _parseServerErrorCode(bodyText)
+			failed.errorBody = bodyText
 			failed.headers = responseHeaders
 			return failed
 
@@ -446,6 +447,7 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 			parsed = {"success": true, "message": trimmed}
 
 		var response := HorizonNetworkResponse.success(parsed if parsed != null else {}, responseCode)
+		response.rawBody = bodyText
 		response.headers = responseHeaders
 		request_completed.emit(url, response)
 		return response
