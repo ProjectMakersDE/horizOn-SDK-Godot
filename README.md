@@ -19,6 +19,7 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https
 | 🔐 **Authentication** | Email, anonymous, Google, and Apple sign-in/sign-up |
 | 🏆 **Leaderboards** | Submit scores, get rankings, view top players |
 | ☁️ **Cloud Saves** | Save and load player progress (JSON or binary) |
+| 🔄 **Realtime** | Optional Cloud invalidations for inbox, matches and chat; HTTP content reload |
 | ⚙️ **Remote Config** | Server-side configuration values |
 | 🌐 **Localization** | Server-side translations in 15 languages |
 | 📰 **News** | In-game news and announcements |
@@ -662,3 +663,9 @@ addons/horizon_sdk/
 MIT License - Copyright (c) [ProjectMakers](https://projectmakers.de)
 
 See [LICENSE](LICENSE) for details.
+
+## Realtime invalidations (Cloud)
+
+After sign-in call `Horizon.realtime.subscribe("inbox:" + Horizon.auth.getCurrentUser().userId)`. Connect `resync_required` and `event_received` to the feature HTTP reload. `polling_required` requests an HTTP fallback after at least `pollAfterSeconds`; chat never polls. Call `unsubscribe(topic)` when no longer needed.
+
+Reconnect uses jitter and reauthorizes subscriptions. Events contain IDs and revisions only. Sign-out clears subscriptions; same-user token refresh reconnects automatically. simpleServer reports `NOT_SUPPORTED`; realtime is Cloud only.
