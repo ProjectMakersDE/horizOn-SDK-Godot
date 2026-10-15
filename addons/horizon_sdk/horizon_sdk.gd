@@ -42,6 +42,7 @@ var _http: HorizonHttpClient
 var _logger: HorizonLogger
 
 ## Feature managers
+var realtime: HorizonRealtime
 var auth: HorizonAuth
 var leaderboard: HorizonLeaderboard
 var cloudSave: HorizonCloudSave
@@ -139,6 +140,10 @@ func _initializeManagers() -> void:
 	# Authentication
 	auth = HorizonAuth.new()
 	auth.initialize(_http, _logger)
+
+	realtime = HorizonRealtime.new()
+	add_child(realtime)
+	realtime.initialize(_http, auth)
 
 	# Leaderboard
 	leaderboard = HorizonLeaderboard.new()

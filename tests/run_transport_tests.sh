@@ -63,5 +63,10 @@ run_contract tests/mock_player_profile_server.py tests/player_profile_transport_
 run_contract tests/mock_validated_actions_server.py tests/validated_actions_transport_test.gd
 run_contract tests/mock_auth_server.py tests/auth_transport_test.gd
 
+"$GODOT_BIN" --headless --path . --script tests/realtime_policy_test.gd
+if [ -n "${HORIZON_REALTIME_FIXTURE_URL:-}" ]; then
+    "$GODOT_BIN" --headless --path . --script tests/realtime_transport_test.gd
+fi
+
 # The release workflow invokes this runner; keep public health in the same gate.
 (cd "$source_dir" && GODOT_BIN="$GODOT_BIN" bash tests/run_health_tests.sh)
