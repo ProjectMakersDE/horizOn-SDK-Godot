@@ -20,6 +20,7 @@ feature's signals and return values.
 | Gift Codes | `gift_codes_example.gd` |
 | Feedback | `feedback_example.gd` |
 | Player Profile | `player_profile_example.gd` |
+| Statistics | `statistics_example.gd` (configure kills/sum and best_score/max first) |
 | Validated Actions | `validated_actions_example.gd` |
 | Validated Actions: server-owned player state | `validated_state_example.gd` |
 | Validated Actions: evidence upload | `validated_evidence_example.gd` |
