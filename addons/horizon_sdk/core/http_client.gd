@@ -313,33 +313,32 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 			HorizonErrorCodes.ErrorCode.SDK_NOT_CONNECTED
 		)
 
-	var url := activeHost + endpoint
+	# A retry belongs to the original request. Never combine its URL/body with a new
+	# project or player session after a sign-out, reconnect or project switch.
+	var requestHost: String = activeHost
+	var requestKey: String = apiKey
+	var requestToken: String = sessionToken if useSessionToken else ""
+	var url := requestHost + endpoint
+	var headers: PackedStringArray = ["Content-Type: application/json", "X-API-Key: " + requestKey]
+	if not requestToken.is_empty(): headers.append("Authorization: Bearer " + requestToken)
+	headers.append_array(extraHeaders)
+	var bodyJson := ""
+	if not data.is_empty() or method == HTTPClient.METHOD_POST or method == HTTPClient.METHOD_PUT:
+		bodyJson = _toJsonExcludeEmpty(data)
 	var attemptCount := 0
 	var maxAttempts := maxRetryAttempts + 1
 
 	while attemptCount < maxAttempts:
 		attemptCount += 1
 		request_started.emit(url, _methodName(method))
+		if activeHost != requestHost or apiKey != requestKey or (useSessionToken and sessionToken != requestToken):
+			var changed := HorizonNetworkResponse.failure("Request context changed before retry", 0, HorizonErrorCodes.ErrorCode.NETWORK_ERROR)
+			changed.serverCode = "SESSION_CHANGED"
+			return changed
 
 		var http := HTTPRequest.new()
 		add_child(http)
 		http.timeout = connectionTimeoutSeconds
-
-		# Build headers
-		var headers: PackedStringArray = [
-			"Content-Type: application/json",
-			"X-API-Key: " + apiKey
-		]
-
-		if useSessionToken and not sessionToken.is_empty():
-			headers.append("Authorization: Bearer " + sessionToken)
-		headers.append_array(extraHeaders)
-
-		# Build body
-		var bodyJson := ""
-		if not data.is_empty() or method == HTTPClient.METHOD_POST or method == HTTPClient.METHOD_PUT:
-			bodyJson = _toJsonExcludeEmpty(data)
-			_logger.debug("Request JSON: %s" % bodyJson)
 
 		# Send request (bodyJson is empty for body-less methods)
 		var error := http.request(url, headers, method, bodyJson)
