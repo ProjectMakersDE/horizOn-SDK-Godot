@@ -54,6 +54,7 @@ var news: HorizonNews
 var giftCodes: HorizonGiftCodes
 var playerProfile: HorizonPlayerProfile
 var statistics: HorizonStatistics
+var achievements: HorizonAchievements
 var validatedActions: HorizonValidatedActions
 var feedback: HorizonFeedback
 var userLogs: HorizonUserLogs
@@ -168,6 +169,8 @@ func _initializeManagers() -> void:
 	# Statistics
 	statistics = HorizonStatistics.new()
 	statistics.initialize(_http, _logger, auth)
+	achievements = HorizonAchievements.new()
+	achievements.initialize(_http, auth, inbox, statistics)
 
 	# Remote Config
 	remoteConfig = HorizonRemoteConfig.new()

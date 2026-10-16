@@ -881,3 +881,36 @@ Explicit gift-redemption IDs use the server's Unicode whitespace definition for
 local blank validation (including NBSP, figure space and narrow NBSP). Nonblank IDs
 remain unchanged. This does not change the existing one-attempt legacy transport;
 the current server rejects an explicit blank ID rather than generating a legacy ID.
+
+### Achievements (TASK-1008, Develop)
+
+```gdscript
+var user_id: String = Horizon.auth.getCurrentUser().userId
+var snapshot: Dictionary = await Horizon.achievements.getAchievements(user_id)
+var unlocked: Dictionary = await Horizon.achievements.unlock(user_id, "manual_hidden")
+var delivered: Dictionary = await Horizon.achievements.deliverRewards(user_id, ["manual_hidden"])
+```
+
+All three methods return `{success, data, errorCode, error}`. Snapshot `data` holds
+`userId`, `revision`, opaque player-specific `definitionVersion`, materialized
+`definitions`, `progress`, `limits` and `serverTime`. Unlock data holds `achievements`,
+`newlyUnlocked`, `replayed` and `deliveryResults`; delivery data holds `achievements`
+and `results`. `getAchievements(user_id, definition_version = "")` sends a conditional
+version only when this manager owns the matching metadata cache. `null` retains
+that cache; `[]` replaces it. Hidden metadata becomes visible only after unlock.
+Session/project/host generations and explicit invalidation fence old responses.
+Reads and mutations serialize; lower progress/time cannot replace newer state.
+
+Retain the same manual key on timeout; the permanent server guard survives catalogue
+edits and archival. Drain 1–8 unique pending keys explicitly. `INBOX_FULL` keeps the
+original `pendingReward.issuedAt/values`; current catalogue rewards never replace
+that accepted intent. A delivered result invalidates the local Inbox cache without
+fetching it. Explicitly refresh Inbox and claim its original entry to replace the
+complete Player Values state; never add reward amounts locally.
+
+Statistics `newlyUnlocked` invalidates cached achievement metadata without adding
+an HTTP request. The minimal `achievements_example.gd` shows an explicit follow-up
+refresh, manual unlock, pending drain and the shared durable Inbox claim flow.
+There are no background polls, automatic signup, client reward evaluation or new
+server reads beyond the three explicitly requested API operations. Native HTTP
+tests use dedicated Godot port 20108; inherited engine fixtures remain serialized.

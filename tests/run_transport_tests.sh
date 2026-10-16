@@ -26,11 +26,13 @@ cd "$test_dir"
 "$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/player_values_example.gd
 "$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/inbox_example.gd
 "$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/gift_codes_example.gd
+"$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/achievements_example.gd
 "$GODOT_BIN" --headless --path . --script tests/pending_purchase_test.gd
 "$GODOT_BIN" --headless --path . --script tests/pending_statistics_test.gd
 "$GODOT_BIN" --headless --path . --script tests/pending_gift_code_test.gd
 "$GODOT_BIN" --headless --path . --script tests/pending_inbox_claim_test.gd
 "$GODOT_BIN" --headless --path . --script tests/auth_identity_policy_test.gd
+"$GODOT_BIN" --headless --path . --script tests/achievements_example_test.gd
 
 # Runs one Godot contract script against its mock server.
 # $1: mock server script, $2: Godot test script
@@ -77,8 +79,10 @@ run_contract tests/mock_validated_actions_server.py tests/validated_actions_tran
 run_contract tests/mock_auth_server.py tests/auth_transport_test.gd
 run_contract tests/mock_statistics_server.py tests/statistics_transport_test.gd
 run_contract tests/mock_inbox_server.py tests/inbox_transport_test.gd
+run_contract tests/mock_achievements_server.py tests/achievements_transport_test.gd
 
 "$GODOT_BIN" --headless --path . --script tests/inbox_policy_test.gd
+"$GODOT_BIN" --headless --path . --script tests/achievements_policy_test.gd
 
 "$GODOT_BIN" --headless --path . --script tests/realtime_policy_test.gd
 if [ -n "${HORIZON_REALTIME_FIXTURE_URL:-}" ]; then
