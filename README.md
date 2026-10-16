@@ -867,3 +867,12 @@ a caller-owned replay identity. No background loop, extra HTTP call, database wo
 or server resource allocation is added. The private jitter RNG never consumes
 the game's global RNG. Native tests use isolated loopback port 20096; inherited fixtures
 may overlap other engine test ports and are run serially when sharing a host.
+
+The Inbox example persists one original claim entry ID per project/player before
+HTTP. A new intent requires that exact entry in the current authorized snapshot,
+unclaimed and with nonempty value attachments. An existing identical intent may
+be retried after timeout even when the entry is already claimed or absent. Another
+pending entry blocks a new claim; corrupt/interrupted storage stays blocked for
+explicit recovery. A regional host change retains the original slot. Only a
+successful authoritative claim confirms and removes its exact stored intent.
+This sample protection adds no server reads, polling or reward calculation.
