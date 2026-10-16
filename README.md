@@ -1336,3 +1336,71 @@ SDK calls or timers generate hidden traffic. The native fixture exercises all14
 routes with two sessions, original durable CAS, opaque bytes, full-Inbox pending,
 reports, one-attempt faults, recovery and common VA start/submit ownership; these
 are local contract proofs, separate from hosted capacity measurements.
+
+### Chat: HTTP commands and push snapshots
+
+`Horizon.chat` returns `{success, data, errorCode, error}` for all six REST methods.
+Every method starts with the current signed-in `user_id`; identifiers must be
+canonical lowercase UUIDs and timestamps must contain exactly three UTC milliseconds.
+
+| Method | Arguments after `user_id` |
+| --- | --- |
+| `getLimits` | none |
+| `openChannel` | `kind, peer_id = "", group_id = ""` |
+| `syncChannel` | `channel_id` |
+| `sendMessage` | `channel_id, operation_id, issued_at, text` |
+| `getOperation` | `operation_id` |
+| `reportMessage` | `channel_id, message_id, reason` |
+
+Open direct channels only for mutual friends, group channels for current members,
+or `project` with neither peer nor group ID. After opening, call
+`watchChannel(user_id, channel_id)`. The manager subscribes through
+`Horizon.realtime`, waits for the current socket's authorization and resync,
+then loads the first snapshot. `channel_changed(channel_id, snapshot)` supplies
+the complete ordered feed, including an empty channel. A later metadata event
+loads only unknown text using the complete cached epoch/ID set. Each channel has
+at most one sync in flight plus one dirty bit. Eight watched channels is a local
+memory bound; another watch fails instead of silently dropping an existing feed.
+`stopWatching(channel_id)` explicitly unsubscribes.
+Multiple views can pass a stable optional `owner` string to `watchChannel` and
+`stopWatching`; up to32 owners share one channel subscription. Releasing a view
+does not unsubscribe another owner. The demo creates its own owner and releases
+it on scene exit; a newly opened view immediately receives the authorized cache.
+
+`getCached(channel_id)` returns an isolated copy. Disconnect, permission resync,
+authorization denial, project/player/session/host generation changes and local
+expiry hide text. Fresh authorized subscription and complete sync are required
+before restoring it. Missing/duplicate/foreign payloads never become a partial
+success. Revisions and retired channel epochs cannot restore an older feed.
+`channel_hidden` lets a UI clear its display immediately. There is no periodic
+poll, disconnected HTTP fallback, automatic page traversal or background send.
+Explicit `syncChannel` also requires an acknowledged current subscription.
+
+Open, send and report perform exactly one transport attempt, including503 and429.
+Only read-only sync and GET use the existing bounded frozen-request retry policy.
+Retain the original send UUID, canonical `issued_at`, channel and exact UTF-8 text
+after any uncertain result; never replace them to retry. `getServerTime()` gives
+the latest accepted server time plus elapsed monotonic time for a new intent.
+Receipt responses contain metadata, not text. A missing or expired operation
+does not prove that the original never committed. Reports retain their original
+channel/message/reason; `removed` is successful replay metadata and
+`REPORT_EXPIRED` does not authorize a replacement. Plain text permits LF/TAB,
+at most500 Unicode scalars/2000 UTF-8 bytes, and rejects other control characters.
+Render it as plain text with markup disabled. PHP surfaces501 `NOT_SUPPORTED`.
+
+The runnable [`chat_demo.tscn`](addons/horizon_sdk/examples/features/chat_demo.tscn)
+uses the existing signed-in session and offers project/direct/group selection,
+plain-text feed, explicit send/status/original retry and report controls. Its
+[`chat_example.gd`](addons/horizon_sdk/examples/features/chat_example.gd) saves
+the original intent before HTTP under project/player/feature identity; host and
+session only fence callbacks. The bounded checksummed journal uses an exclusive
+lock and atomic replacement. Partial, corrupt or abandoned-lock storage blocks
+new sends. A successful original receipt is persisted before freeing its slot;
+a late ACK cannot free a newer original. Restart recovery reads the original
+operation first and never automatically generates another identity or send.
+The game must separately handle any blocked journal through explicit recovery.
+
+Native fixtures use actual HTTP and WebSocket connections for first-message push,
+100-ID incremental snapshots, permissions/reconnect, one-attempt faults and original
+lost-ACK recovery. These local proofs are distinct from hosted two-player,
+fanout/CPU/storage measurements and official game integration.
