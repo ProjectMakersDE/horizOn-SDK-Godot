@@ -1135,3 +1135,120 @@ Player Values transport, followed by the caller's explicit inventory GET. The SD
 adds no server queries, grants, polling timers or hidden recovery requests.
 simpleServer supports these REST shapes; its catalog administration uses the local
 CLI. Realtime and validated actions remain hosted-only.
+
+## Shared Objects: opaque bytes and explicit world-map pages
+
+`Horizon.sharedObjects` exposes the seven player REST operations. Every call uses
+the current project's API key and the matching player's Bearer session; no admin
+credential belongs in a game. Results contain `success,data,errorCode,error`.
+Success additionally returns an opaque local `identity` for `getCached(identity)`.
+Cache access never performs network IO or authorizes a write.
+
+```gdscript
+var user_id: String = Horizon.auth.getCurrentUser().userId
+var catalog: Dictionary = await Horizon.sharedObjects.getCollections(user_id)
+var usage: Dictionary = await Horizon.sharedObjects.getUsage(user_id, "world")
+# Render the reviewed usage first; invoke creation only from an explicit player action.
+if usage.success:
+    var created: Dictionary = await Horizon.sharedObjects.createObject(
+        user_id, "world", usage.data.revision, PackedByteArray([0, 255, 1]),
+        {"power": 100}, {"x": 4, "y": 8})
+    if created.success:
+        var object: Dictionary = created.data.object
+        print(object.id, object.revision, object.data) # PackedByteArray, never parsed as game JSON.
+
+var page: Dictionary = await Horizon.sharedObjects.queryObjects(user_id, "world", {
+    "mode": "rectangle", "minX": 0, "maxX": 10, "minY": 0, "maxY": 10, "limit": 20})
+# An empty page with nextCursor is valid. Request the next page explicitly with the
+# unchanged query and that exact cursor; there is no automatic traversal or timer.
+```
+
+Signatures (all async calls return `Dictionary`):
+
+- `getCollections(user_id, after_key="", limit=50, catalog_revision=null)`
+- `getUsage(user_id, collection)`
+- `getObject(user_id, collection, object_id)`
+- `queryObjects(user_id, collection, query:Dictionary)`
+- `createObject(user_id, collection, expected_usage_revision, data:PackedByteArray, search:Dictionary, position=null, group_id="")`
+- `updateObject(user_id, collection, object_id, expected_revision, data:PackedByteArray, search:Dictionary, position=null)`
+- `deleteObject(user_id, collection, object_id, expected_revision)`
+
+Collections use one permanent read/write schema. Configure collections through the
+Dashboard/Account Key or self-hosted CLI. Returned definitions and existing objects
+can exceed a downgraded current tier; the SDK preserves them within the global
+64KiB object bound. Bytes remain exact, including empty data/NUL/high-bit values.
+Every object preserves `dataBase64` and adds decoded `data:PackedByteArray`.
+`groupId`, `position` and `expiresAt` remain null when absent, and empty `search`
+remains `{}`. Collection catalog pages keep the original revision across explicit
+pages. No implicit catalog load, grant or new identity is performed.
+
+All revisions/positions/integer search values use exact JSON integer tokens within
+±9007199254740991. Floats, exponents, quoted integers, duplicate decoded fields,
+unpaired Unicode and noncanonical Base64 fail before state replacement. Native
+Godot strings cannot represent U+0000. Such metadata strings use the existing
+immutable `HorizonItemStringData` wrapper, with `getOriginalJson()`, canonical
+`getJson()`, `getUtf8ByteCount()` and visibly escaped `getDisplayPreview()`. Other
+strings remain ordinary `String`. Pass the original wrapper back in `search` to
+preserve every code point; a display preview is never an unchanged write value.
+`HorizonSharedObjectModels.parse()` can construct a lossless metadata dictionary
+from original JSON text. Payload bytes require no string conversion.
+
+Queries support one owner/group partition and `list`, `owner`, `field` equality or
+range, `rectangle`, and integer-field `random` modes. Random results are varied,
+nonuniform and have no next cursor. One result page contains at most50 objects and
+1MiB decoded data. Refresh uses returned `pollAfterSeconds` (normally120); explicit
+next pages may proceed immediately subject to ordinary rate limits. An early repeat
+returns local `REFRESH_NOT_DUE` with `retryAfterSeconds`;
+`getRefreshDelaySeconds(identity)` reports the remaining interval. The sample
+uses explicit `getRecoveryUsage` and own-player `queryRecoveryObjects` reads only
+to reconcile a pending write; these bypass refresh cadence without retrying writes.
+Query POST is
+read-only and may use bounded read retries with the frozen original body. Create,
+update and delete each use one transport attempt and the exact original If-Match:
+usage revision for create, object revision for update/delete. A timeout requires
+explicit state recovery; never silently refresh a revision or create again to
+recover a lost ID. Repeated deletion can correctly return OBJECT_NOT_FOUND.
+
+Host/project/player/session generations, including A→B→A changes and callback
+invalidations, fence queued/late responses. Cache versions/times never move backward
+within the retained resource window. Local caching is bounded to8 responses and512
+revision/time/deletion fences; it adds no server calls. Signals are
+`objects_loaded(kind,data)`, `objects_changed(kind,data)` and
+`shared_objects_failed(error,code)`. Realtime/chat and background polling are absent.
+
+The executable `examples/features/shared_objects_example.gd` supplies explicit
+collection/usage reads, owned-marker create/read/update, rectangle pages and reviewed
+deletion. It durably saves the complete original body, IDs and revision before a
+single write. The project/player namespace excludes regional host and credentials.
+Uncertain/failed writes block further writes across sample instances and restart;
+there is deliberately no uncertain-create replay function. `inspect_pending()`
+reads stable owner usage and one owner page; explicitly continue its cursor until
+complete. Only an explicit `acknowledge_reconciliation()` after reviewing the full
+owner state can release the guard, and a changed monotone revision fences late old
+CAS writes. Unchanged usage/target revisions remain unconfirmed. Corrupt state,
+interrupted files, stale locks and save/ack failures block new work and require
+reconciliation with the original state. No automatic file deletion or new ID.
+
+For asynchronous PvP, store opaque defense bytes with numeric `power` and call
+`sample_opponents()` for a bounded range. `begin_defense_run(selected_defense, leaderboard_key)` passes the frozen bytes and
+SHA-256 digest to the existing Cloud-only Validated Actions start route. The game
+plays those bytes with the returned seed, records its actual input log, then calls
+`submit_defense_run(score,input_log)`. Known terminal start/submit rejections release the sample binding. An explicit SDK
+discard releases a known run only if no submit was sent. An uncertain start or
+submit keeps the guard; use the original VA lifecycle rather than replacing it. This
+adds one logical start and one submit (plus existing optional requested evidence);
+it never infers a winner or validates a battle. Durable ordinary defender Inbox
+notice delivery runs only on the trusted backend (the scoped hosted route or the
+simpleServer backend-only recipe), with a frozen defense/run binding, original
+UUID and finite expiry. Never ship its Account Key in a client. Normal Shared
+Objects REST works on simpleServer; Validated Actions and realtime retain their
+Cloud-only boundaries.
+
+`tests/run_transport_tests.sh` includes strict/lossless/byte/page/retention policy
+checks and an actual loopback HTTP sample chain covering all seven routes,
+original headers, restart/read-only recovery, explicit cursors, frozen read retry,
+malformed/stale/ABA replies, Cloud VA defense start/submit, and exactly
+one503/429/timeout Shared Objects mutation attempt. Each normal feature call adds
+one logical HTTP request (read retries are bounded); one explicit pending recovery
+page adds two usage reads and one owner query. No recovery pages run automatically. Native
+engine, exact-source CI and backend/runtime proof are recorded separately.

@@ -14,8 +14,8 @@ static func integer(value: Variant, minimum: int = 0) -> bool: return typeof(val
 static func time(value: Variant) -> bool: return value is String and HorizonPlayerValues._timeMillis(value) >= 0
 
 ## All numeric fields in Items are integers. Parse before native JSON can round or coerce them.
-static func parse(json: String) -> Dictionary:
-	if json.to_utf8_buffer().size() > 1048576: return {}
+static func parse(json: String, max_bytes: int = 1048576) -> Dictionary:
+	if max_bytes < 1 or max_bytes > 2097152 or json.to_utf8_buffer().size() > max_bytes: return {}
 	var tokens: Array[RegExMatch] = _tokens.search_all(json)
 	var end: int = 0
 	for token: RegExMatch in tokens:
