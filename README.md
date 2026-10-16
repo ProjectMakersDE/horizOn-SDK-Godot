@@ -19,7 +19,7 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https
 | 🔐 **Authentication** | Email, anonymous, Google, and Apple sign-in/sign-up |
 | 🏆 **Leaderboards** | Submit scores, get rankings, view top players |
 | ☁️ **Cloud Saves** | Save and load player progress (JSON or binary) |
-| 🔄 **Realtime** | Optional Cloud invalidations for inbox, matches and chat; HTTP content reload |
+| 🔄 **Realtime** | Optional Cloud invalidations for inbox, friends, matches and chat; HTTP content reload |
 | ⚙️ **Remote Config** | Server-side configuration values |
 | 🌐 **Localization** | Server-side translations in 15 languages |
 | 📰 **News** | In-game news and announcements |
@@ -27,6 +27,7 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https
 | 🧑 **Player Profile** | Avatar, frame and badges per player, shown on leaderboards |
 | 📈 **Statistics** | One session batch for sum/max/min/last counters with optional UTC daily/weekly resets |
 | 📬 **Inbox** | Bounded personal/project notifications, read/remove and atomic Player Values claims |
+| 👥 **Friends** | Exact public lookup, explicit request actions and private own-player relationships |
 | ✅ **Validated Actions** | Server-checked runs: single-use tickets, server seed, rule checks before a score is written |
 | 💬 **Feedback** | Submit bug reports and feature requests |
 | 📊 **User Logs** | Server-side player event tracking |
@@ -914,3 +915,60 @@ refresh, manual unlock, pending drain and the shared durable Inbox claim flow.
 There are no background polls, automatic signup, client reward evaluation or new
 server reads beyond the three explicitly requested API operations. Native HTTP
 tests use dedicated Godot port 20108; inherited engine fixtures remain serialized.
+
+
+### Friends (TASK-1009, Develop)
+
+```gdscript
+var user_id: String = Horizon.auth.getCurrentUser().userId
+var result: Dictionary = await Horizon.friends.getFriends(user_id)
+if result.success:
+    # Render this full snapshot. Keep its revision and the selected request UUID.
+    var snapshot: Dictionary = result.data
+    print(snapshot.friendCode)
+
+# In the explicit Accept button handler, pass the selected rendered request:
+func confirm_incoming(user_id: String, target: String, revision: int, request_id: String) -> Dictionary:
+    return await Horizon.friends.acceptRequest(user_id, target, revision, request_id)
+```
+
+Every operation returns `{success, data, errorCode, error}`. The reserved methods are
+`getFriends(user_id)`, `findPlayer(user_id, query)`, `sendRequest`, `removeFriend`,
+`blockPlayer`, `unblockPlayer` with `(user_id, target_user_id, expected_revision)`, and
+`acceptRequest`, `declineRequest`, `cancelRequest` with the same arguments plus the original
+`request_id`. Revisions must be explicit integer Variants in 0…9,007,199,254,740,991;
+strings, floats, missing UUIDs and self actions fail locally without HTTP.
+
+Lookup accepts one exact player UUID or canonical public `H-` friend code. Its data contains
+only `{userId, friendCode, display:{name,profile:{avatarId,frameId,badges}}}`. It never returns
+email, tokens, activity or another player's private blocklist. Successful reads and mutations
+replace the complete own-player snapshot: `{userId,revision,friendCode,friends,incoming,
+outgoing,blocked,limits,serverTime}`. Nullable display fields remain null; `lastActiveAt:null`
+means no retained login is known. A login timestamp is never an online/offline indicator.
+Retained friends above the current tier remain readable after a downgrade. Returned dictionaries
+are copies; local edits do not modify the retained snapshot.
+
+All seven mutations use exactly one transport attempt, including global 429, 503 and timeout.
+They have no permanent command receipt. After an uncertain result or 409, explicitly refresh
+and let the player reconcile the intended action. Never replace a revision/request UUID and
+silently repeat a newer action; an old Inbox notice cannot authorize accepting a new request.
+Commands invalidate their old local snapshot, preserve original arguments while queued and
+suppress late host/project/session/epoch responses, including A→B→A changes. No signup,
+background polling, extra profile lookup or hidden recovery request is added. A successful
+mutation is one HTTP POST; lookup/snapshot each use one logical GET with the existing bounded
+read retry policy. All relationship writes, notification atomicity and block policy stay on the server.
+
+The executable `examples/features/friends_example.gd` supplies explicit refresh, exact lookup
+and confirmed actions for all routes. Optional Cloud topic `friends:<userId>` is metadata only:
+connect `Horizon.realtime.event_received` and `resync_required` to cache invalidation followed
+by an explicit `getFriends` refresh, coalescing repeated UI refreshes. The manager creates no
+polling timer or automatic subscription. simpleServer has REST parity; realtime remains Cloud only.
+
+`tests/run_transport_tests.sh` keeps the existing transport/health gates and adds 17 real
+loopback HTTP requests through the actual sample and manager. They cover all nine endpoints,
+64-bit revisions, unchanged request UUIDs, private/public projection, two player sessions,
+full-snapshot replacement and single 429/503/timeout attempts. Separate policy cases cover
+wire integer/duplicate-name rejection, retained downgrade lists, crossed requests, stale
+revision/time floors, serialization and context/queue/completion-callback races. These local
+fixtures verify SDK transport and cache behavior; backend transactions and real Cloud realtime
+are separate acceptance evidence.

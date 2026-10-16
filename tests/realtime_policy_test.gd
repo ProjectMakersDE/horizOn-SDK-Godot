@@ -1,5 +1,6 @@
 extends SceneTree
 func _initialize() -> void:
+	assert(HorizonRealtime._validTopic("friends:player") and not HorizonRealtime._validTopic("friends:"))
 	var realtime := HorizonRealtime.new()
 	if not realtime.subscribe("inbox:player") or realtime.subscribe("inbox:") or realtime.subscribe("chat:bad/value"):
 		push_error("invalid subscription policy")
