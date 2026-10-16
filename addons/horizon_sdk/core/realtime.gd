@@ -6,6 +6,7 @@ signal event_received(event: Dictionary)
 signal resync_required(topic: String)
 signal polling_required(topic: String, poll_after_seconds: int)
 signal connection_error(code: String)
+signal subscription_failed(topic: String, code: String)
 
 ## Optional full ws/wss URL for a separately exposed Dev gateway.
 var gatewayUrl: String = ""
@@ -24,6 +25,7 @@ var _pendingCanceled: bool = false
 var _clientId: String = ""
 var _token: String = ""
 var _userId: String = ""
+var _contextGeneration: int = -1
 var _generation: int = 0
 var _attempt: int = 0
 var _retryAt: float = 0.0
@@ -50,6 +52,11 @@ func subscribe(topic: String) -> bool:
 		return false
 	_topics[topic] = true
 	return true
+
+## An allocated subscription is not authorized until the current socket acknowledges it.
+func isSubscribed(topic: String) -> bool:
+	_syncIdentity()
+	return isReady and _topics.has(topic) and _sent.has(topic)
 
 func setPollAfterSeconds(seconds: int) -> void:
 	pollAfterSeconds = maxi(1, seconds)
@@ -214,6 +221,7 @@ func _handle(frame: Dictionary) -> void:
 				_topics.erase(denied)
 				_sent.erase(denied)
 				_pending = ""
+				subscription_failed.emit(denied, "SUBSCRIPTION_FORBIDDEN")
 			lastErrorCode = str(frame.get("code", "GATEWAY_UNAVAILABLE"))
 			connection_error.emit(lastErrorCode)
 
@@ -250,6 +258,13 @@ func _syncIdentity() -> bool:
 	if _http == null or _auth == null:
 		return false
 	var changed: bool = false
+	var context: int = _http.getContextGeneration()
+	if context != _contextGeneration:
+		_disconnect()
+		_contextGeneration = context
+		_unsupported = false
+		_attempt = 0
+		changed = true
 	var user: String = _auth.getCurrentUser().userId if _auth.isSignedIn() else ""
 	if user != _userId:
 		if not _userId.is_empty():

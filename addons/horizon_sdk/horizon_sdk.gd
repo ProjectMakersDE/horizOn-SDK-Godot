@@ -57,6 +57,7 @@ var statistics: HorizonStatistics
 var achievements: HorizonAchievements
 var sharedObjects: HorizonSharedObjects
 var matches: HorizonMatches
+var chat: HorizonChat
 var items: HorizonItems
 var groups: HorizonGroups
 var friends: HorizonFriends
@@ -180,6 +181,9 @@ func _initializeManagers() -> void:
 	sharedObjects.initialize(_http, auth)
 	matches = HorizonMatches.new()
 	matches.initialize(_http, auth, validatedActions, realtime)
+	chat = HorizonChat.new()
+	add_child(chat)
+	chat.initialize(_http, auth, realtime)
 	items = HorizonItems.new()
 	items.initialize(_http, auth, playerValues)
 	groups = HorizonGroups.new()
