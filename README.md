@@ -852,3 +852,18 @@ Before guest signup/restore, a durable identity marker prevents a lost signup
 response or missing cache from creating another guest on restart. Recover the
 original identity rather than deleting this guard. Corrupt caches and unusable
 tokens fail closed. This changes only the executable sample and its tests.
+
+### Rate-limit retries (TASK-996)
+
+For HTTP 429 without a nonempty machine-readable `code`, JSON requests wait the
+server's `Retry-After` plus independent random jitter from 0 to 20% before the next
+allowed attempt. Never retry earlier than the server minimum. Missing/invalid
+hints use a finite fallback of at least one second. Any feature code, including
+new codes unknown to this SDK, returns immediately with its status/code/header.
+The configured attempt budget, immutable original body/ID and host/project/session
+generation remain unchanged; a context change or ABA during backoff cancels the retry.
+Signup and legacy redemption still have one transport attempt because they lack
+a caller-owned replay identity. No background loop, extra HTTP call, database work
+or server resource allocation is added. The private jitter RNG never consumes
+the game's global RNG. Native tests use isolated loopback port 20096; inherited fixtures
+may overlap other engine test ports and are run serially when sharing a host.
