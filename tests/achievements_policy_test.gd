@@ -1,5 +1,8 @@
 extends SceneTree
 const USER := "00000000-0000-4000-8000-000000001008"
+class InboxProbe extends HorizonInbox:
+	var invalidations: int = 0
+	func clearCache() -> void: invalidations += 1
 class ControlledHttp extends HorizonHttpClient:
 	var responses: Array = []
 	var calls: Array = []
@@ -42,7 +45,8 @@ func _run() -> void:
 	auth._currentUser.userId = USER
 	auth._currentUser.accessToken = http.sessionToken
 	var achievements := HorizonAchievements.new()
-	achievements.initialize(http, auth)
+	var inbox := InboxProbe.new()
+	achievements.initialize(http, auth, inbox)
 	assert(not HorizonPlayerValues._safeJsonIntegers('{"definitionVersion":"opaque"}'), "Existing PV/Gift numeric-version validation keeps its default")
 	http.responses = [{"data": _snapshot(1, "a", 1)}]
 	assert((await achievements.getAchievements(USER)).success)
@@ -157,6 +161,27 @@ func _run() -> void:
 	http.responses = [{"data": _snapshot(7, "e", 7)}]
 	assert((await achievements.getAchievements(USER)).errorCode == "STALE_RESPONSE" and achievements.getCurrentAchievements().is_empty(), "Synchronous completion handlers cannot return old-session data")
 	achievements.achievements_loaded.disconnect(change_on_success)
+	var partial: Dictionary = _snapshot(10, "f", 10)
+	for index: int in range(21):
+		var retained: Dictionary = partial.definitions[0].duplicate(true)
+		retained.key = "retained_%d" % index
+		partial.definitions.append(retained)
+	var entry_id: String = "message:00000000-0000-4000-8000-000000001008"
+	partial.progress = [{"key": "manual", "unlockedAt": "2026-10-16T12:00:00Z", "rewardState": "delivered", "inboxEntryId": entry_id, "pendingReward": null}, {"key": "waiting", "unlockedAt": "2026-10-16T12:00:00Z", "rewardState": "pending", "inboxEntryId": null, "pendingReward": {"issuedAt": "2026-10-16T12:00:00Z", "values": [{"key": "coins", "amount": 13}]}}]
+	var delivery_response: Dictionary = {"achievements": partial, "results": [{"key": "manual", "state": "delivered", "inboxEntryId": entry_id, "code": null}, {"key": "missing", "state": "none", "inboxEntryId": null, "code": "ACHIEVEMENT_NOT_FOUND"}, {"key": "waiting", "state": "pending", "inboxEntryId": null, "code": "INBOX_FULL"}], "deliveryResults": null, "newlyUnlocked": ["forged"], "replayed": false}
+	http.responses = [{"data": delivery_response}]
+	var notifications: Array = []
+	achievements.achievements_unlocked.connect(func(keys: Array): notifications.append_array(keys))
+	var keys: Array = ["manual", "missing", "waiting"]
+	create_timer(.002).timeout.connect(func(): keys[0] = "caller-mutated")
+	var mixed: Dictionary = await achievements.deliverRewards(USER, keys)
+	assert(mixed.success and mixed.data.results.size() == 3 and mixed.data.results[2].code == "INBOX_FULL" and mixed.data.achievements.progress[1].pendingReward.values[0].amount == 13)
+	assert(mixed.data.achievements.definitions.size() == 22 and mixed.data.achievements.limits.maxDefinitions == 20, "A downgrade cannot hide globally bounded retained metadata or archived pending keys")
+	assert(keys[0] == "caller-mutated" and http.calls[-1].body.keys == ["manual", "missing", "waiting"], "A caller cannot alter the submitted original drain batch")
+	assert(inbox.invalidations == 1 and notifications.is_empty() and not mixed.data.has("newlyUnlocked") and not mixed.data.has("deliveryResults"), "Unvalidated outer extensions cannot override normalized outcomes or forge notifications")
+	delivery_response.deliveryResults = []
+	http.responses = [{"data": delivery_response}]
+	assert((await achievements.deliverRewards(USER, ["manual", "missing", "waiting"])).success and inbox.invalidations == 2 and notifications.is_empty())
 	count = http.calls.size()
 	assert((await achievements.deliverRewards(USER, ["manual", "manual"])).errorCode == "INVALID_REQUEST")
 	assert((await achievements.deliverRewards(USER, ["a", "b", "c", "d", "e", "f", "g", "h", "i"])).errorCode == "INVALID_REQUEST")

@@ -103,7 +103,8 @@ func _call(user_id: String, route: String, payload: Dictionary, version_hint: St
 		result = _consume(response.data, user_id, route, body, sent_version)
 		if result.success:
 			if not route.is_empty() and _inbox != null:
-				for outcome: Dictionary in result.data.get("deliveryResults", result.data.get("results", [])):
+				var outcomes: Array = result.data.deliveryResults if route == "/unlock" else result.data.results
+				for outcome: Dictionary in outcomes:
 					if outcome.state == "delivered":
 						_inbox.clearCache()
 						break
@@ -112,7 +113,7 @@ func _call(user_id: String, route: String, payload: Dictionary, version_hint: St
 			_syncScope()
 			if scope != _scope or epoch != _epoch:
 				result = _fail("STALE_RESPONSE")
-			elif not route.is_empty() and not result.data.get("newlyUnlocked", []).is_empty():
+			elif route == "/unlock" and not result.data.newlyUnlocked.is_empty():
 				achievements_unlocked.emit(result.data.newlyUnlocked.duplicate())
 				_syncScope()
 				if scope != _scope or epoch != _epoch: result = _fail("STALE_RESPONSE")
@@ -133,8 +134,6 @@ func _consume(raw: Variant, user_id: String, route: String, body: Dictionary, se
 	if snapshot.is_empty(): return _fail(_lastErrorCode)
 	var data: Dictionary = snapshot
 	if not route.is_empty():
-		data = raw.duplicate(true)
-		data.achievements = snapshot
 		var requested: Array = [body.key] if route == "/unlock" else body.keys
 		var outcomes: Variant = _outcomes(raw.get("deliveryResults") if route == "/unlock" else raw.get("results"), requested)
 		if outcomes == null: return _fail("INVALID_RESPONSE")
@@ -146,9 +145,9 @@ func _consume(raw: Variant, user_id: String, route: String, body: Dictionary, se
 			for progress: Dictionary in snapshot.progress:
 				if progress.key == body.key: unlocked = true
 			if not unlocked: return _fail("INVALID_RESPONSE")
-			data.deliveryResults = outcomes
+			data = {"achievements": snapshot, "newlyUnlocked": raw.newlyUnlocked.duplicate(), "replayed": raw.replayed, "deliveryResults": outcomes}
 		else:
-			data.results = outcomes
+			data = {"achievements": snapshot, "results": outcomes}
 	_current = snapshot.duplicate(true)
 	_revision = snapshot.revision
 	_serverTime = HorizonPlayerValues._timeMillis(snapshot.serverTime)

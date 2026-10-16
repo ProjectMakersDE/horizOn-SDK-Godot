@@ -243,6 +243,7 @@ static func _validOperationId(value: String) -> bool:
 	return expression.search(value) != null and int(value.get_slice(":", 0)) > 0
 
 static func _safeJsonIntegers(json: String, fields: Array[String] = ["balance", "earnedToday", "dailyCap", "amount", "revision", "definitionVersion", "purchasesPerDay"]) -> bool:
+	# Other feature contracts may have opaque versions; existing PV/Gift defaults stay strict.
 	# Tokenize whole JSON strings, so escaped keys are decoded and opaque giftData stays opaque.
 	# Track objects independently to reject duplicate decoded names without confusing array entries.
 	var tokens: RegEx = RegEx.new()
