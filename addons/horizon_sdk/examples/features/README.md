@@ -23,6 +23,7 @@ feature's signals and return values.
 | Player Values | `player_values_example.gd` (configure energy-pack; persists uncertain purchase intent) |
 | Statistics | `statistics_example.gd` (configure kills/sum and best_score/max first) |
 | Inbox | `inbox_example.gd` (explicit refresh/claim; persists the authorized original entry ID) |
+| Items | `items_example.gd` (explicit item offer/purchase, inventory, equip/adjust/discard) |
 | Achievements | `achievements_example.gd` (progress, permanent-key unlock, pending Inbox drain and claim) |
 | Validated Actions | `validated_actions_example.gd` |
 | Validated Actions: server-owned player state | `validated_state_example.gd` |
@@ -46,3 +47,15 @@ page and all fourteen caller-confirmed actions. Preserve reviewed revisions and
 request UUIDs after uncertainty; reconcile with an explicit read. The actual sample
 is executed by the two-player Groups HTTP fixture; it neither polls nor replaces
 a guest identity. Transfer leadership before leaving; private data stays member-only.
+
+Items: attach `items_example.gd` to a Node and call its methods from explicit UI
+buttons after signing in. Configure an active item template and Player Values item
+offer first. `review_offer` displays fresh terms; `purchase_reviewed_offer` checks
+them again, persists the original operation ID and then sends. Call
+`retry_pending_purchase` after uncertainty; a confirmed purchase with a failed
+inventory refresh resumes GET only. Pending action files preserve exact instance
+and revision until explicit fresh-read reconciliation. Do not delete an expired or
+corrupt guard to create another operation. The sample does not run any purchase,
+property delta or discard from `_ready`, `_process` or a polling loop. Each discard
+needs its own explicit destructive confirmation. NUL-containing property strings
+use the lossless ItemStringData wrapper documented in the SDK README.

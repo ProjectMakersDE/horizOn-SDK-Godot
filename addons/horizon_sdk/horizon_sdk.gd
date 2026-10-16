@@ -55,6 +55,7 @@ var giftCodes: HorizonGiftCodes
 var playerProfile: HorizonPlayerProfile
 var statistics: HorizonStatistics
 var achievements: HorizonAchievements
+var items: HorizonItems
 var groups: HorizonGroups
 var friends: HorizonFriends
 var validatedActions: HorizonValidatedActions
@@ -173,6 +174,8 @@ func _initializeManagers() -> void:
 	statistics.initialize(_http, _logger, auth)
 	achievements = HorizonAchievements.new()
 	achievements.initialize(_http, auth, inbox, statistics)
+	items = HorizonItems.new()
+	items.initialize(_http, auth, playerValues)
 	groups = HorizonGroups.new()
 	groups.initialize(_http, auth)
 	friends = HorizonFriends.new()
