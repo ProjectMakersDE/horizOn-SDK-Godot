@@ -17,6 +17,7 @@ var _scope: Dictionary = {}
 var _current: Dictionary = {}
 var _floors: Dictionary = {}
 var _staged: Dictionary = {}
+var _fragments: Dictionary = {}
 var _revision: int = -1
 var _serverTime: int = -1
 var _epoch: int = 0
@@ -47,15 +48,15 @@ func getMembers(user_id: String, group_id: String, after_user_id: String = "", l
 func getPending(user_id: String, group_id: String) -> Dictionary:
 	return await _call(user_id, "pending", group_id)
 
-func createGroup(user_id: String, expected_player_revision: Variant, name: String, description: String = "", join_mode: String = "open", data: Dictionary = {}) -> Dictionary:
+func createGroup(user_id: String, expected_player_revision: Variant, name: String, description: String = "", join_mode: String = "open", data: Variant = {}) -> Dictionary:
 	if typeof(expected_player_revision) != TYPE_INT or not _nonnegative(expected_player_revision): return _fail("INVALID_REVISION")
 	if not _metadata(name, description, join_mode, data): return _fail("INVALID_GROUP")
-	return await _call(user_id, "create", "", {"expectedPlayerRevision": expected_player_revision, "name": name, "description": description, "joinMode": join_mode, "data": data.duplicate(true)})
+	return await _call(user_id, "create", "", {"expectedPlayerRevision": expected_player_revision, "name": name, "description": description, "joinMode": join_mode, "data": HorizonGroupJsonData.fromDictionary(data) if data is Dictionary else data})
 
-func updateGroup(user_id: String, group_id: String, expected_revision: Variant, name: String, description: String, join_mode: String, data: Dictionary) -> Dictionary:
+func updateGroup(user_id: String, group_id: String, expected_revision: Variant, name: String, description: String, join_mode: String, data: Variant) -> Dictionary:
 	if typeof(expected_revision) != TYPE_INT or not _nonnegative(expected_revision): return _fail("INVALID_REVISION")
 	if not _metadata(name, description, join_mode, data): return _fail("INVALID_GROUP")
-	return await _call(user_id, "update", group_id, {"expectedRevision": expected_revision, "name": name, "description": description, "joinMode": join_mode, "data": data.duplicate(true)})
+	return await _call(user_id, "update", group_id, {"expectedRevision": expected_revision, "name": name, "description": description, "joinMode": join_mode, "data": HorizonGroupJsonData.fromDictionary(data) if data is Dictionary else data})
 
 func joinGroup(user_id: String, group_id: String, expected_revision: Variant) -> Dictionary:
 	return await _action(user_id, group_id, expected_revision, "join")
@@ -131,7 +132,14 @@ func _call(user_id: String, kind: String, group_id: String = "", payload: Dictio
 	var response: HorizonNetworkResponse
 	if mutation:
 		body.userId = user_id
-		response = await _http.putOnceAsync(endpoint, body, true) if kind == "update" else await _http.postJsonOnceAsync(endpoint, body, true)
+		var original_json: String = ""
+		if body.get("data") is HorizonGroupJsonData:
+			var opaque: HorizonGroupJsonData = body.data
+			body.erase("data")
+			original_json = JSON.stringify(body).trim_suffix("}") + ',"data":' + opaque.getJson() + "}"
+			# Telemetry receives a preview; the wire body uses the captured original.
+			body.data = opaque.getPreview()
+		response = await _http.putOnceAsync(endpoint, body, true, original_json) if kind == "update" else await _http.postJsonOnceAsync(endpoint, body, true, original_json)
 	else:
 		endpoint += "?userId=" + user_id.uri_encode()
 		if kind == "members":
@@ -150,7 +158,9 @@ func _call(user_id: String, kind: String, group_id: String = "", payload: Dictio
 	else:
 		_lastErrorCode = "INVALID_RESPONSE"
 		_staged = _floors.duplicate()
-		var data: Dictionary = _normalize(response.data, kind, user_id, group_id, body)
+		_fragments = HorizonGroupJsonData.extract(response.rawBody)
+		var data: Dictionary = {} if _fragments.has("_invalid") else _normalize(response.data, kind, user_id, group_id, body)
+		_fragments.clear()
 		if data.is_empty():
 			result = _fail(_lastErrorCode)
 		else:
@@ -232,9 +242,11 @@ func _group(raw: Variant, user: String, expected: String = "", private_allowed: 
 	result.revision = int(raw.revision)
 	result.memberCount = int(raw.memberCount)
 	if private_allowed and raw.get("myRole") != null:
-		if raw.myRole not in ROLES or (raw.myRole == "leader") != (raw.leaderId.to_lower() == user.to_lower()) or not raw.get("data") is Dictionary or not _metadata(raw.name, raw.description, raw.joinMode, raw.data): return {}
+		if raw.myRole not in ROLES or (raw.myRole == "leader") != (raw.leaderId.to_lower() == user.to_lower()) or not raw.get("data") is Dictionary or not _fragments.has(key): return {}
+		var original: HorizonGroupJsonData = HorizonGroupJsonData.fromJson(_fragments[key])
+		if original == null: return {}
 		result.myRole = raw.myRole
-		result.data = raw.data.duplicate(true)
+		result.data = original
 	return result
 
 func _members(raw: Dictionary, group_id: String, query: Dictionary) -> Dictionary:
@@ -291,22 +303,12 @@ func _display(raw: Variant) -> Dictionary:
 	return {"name": raw.get("name"), "profile": profile}
 
 func _metadata(name: Variant, description: Variant, mode: Variant, data: Variant) -> bool:
-	return name is String and _nonblank.search(name) != null and name.to_utf8_buffer().size() <= 120 and description is String and description.to_utf8_buffer().size() <= 1024 and mode in ["open", "request", "invite"] and data is Dictionary and _jsonValue(data, 0) and JSON.stringify(data).to_utf8_buffer().size() <= 2048
+	if not name is String or _nonblank.search(name) == null or name.to_utf8_buffer().size() > 120 or not description is String or description.to_utf8_buffer().size() > 1024 or mode not in ["open", "request", "invite"]: return false
+	if data is HorizonGroupJsonData: return data.isValid()
+	return data is Dictionary and HorizonGroupJsonData.fromDictionary(data) != null
 
 func _jsonValue(value: Variant, depth: int) -> bool:
-	if depth > 16: return false
-	match typeof(value):
-		TYPE_NIL, TYPE_BOOL, TYPE_STRING, TYPE_INT: return true
-		TYPE_FLOAT: return is_finite(value)
-		TYPE_ARRAY:
-			for child: Variant in value:
-				if not _jsonValue(child, depth + 1): return false
-			return true
-		TYPE_DICTIONARY:
-			for key: Variant in value:
-				if (not key is String and not key is StringName) or not _jsonValue(value[key], depth + 1): return false
-			return true
-	return false
+	return HorizonGroupJsonData.isJsonValue(value, depth)
 
 ## Protocol counters require original integer lexemes. Arbitrary group data permits
 ## finite JSON numbers, including keys named revision; do not apply counter rules there.
@@ -355,6 +357,8 @@ func _reset() -> void:
 	clearCache()
 	_scope = {}
 	_floors.clear()
+	_staged.clear()
+	_fragments.clear()
 	_revision = -1
 	_serverTime = -1
 func _validUuid(value: Variant) -> bool: return value is String and _uuid.search(value) != null

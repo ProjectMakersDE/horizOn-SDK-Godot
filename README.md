@@ -1004,7 +1004,15 @@ accepts no caller group ID. `updateGroup(user,group,expected_revision,name,descr
 replaces every metadata field. Both use JSON objects (including empty `{}`), finite
 numbers, depth16 and at most2048 serialized UTF-8 bytes; names120/description1024
 UTF-8 bytes. Dotted, empty and dollar-prefixed data keys and decimal data fields
-remain legal. Protocol revisions/counts require exact safe integer wire lexemes.
+remain legal. `GroupView.data` is a `HorizonGroupJsonData` value containing original
+JSON text, including large integers and high-precision number lexemes; only
+insignificant whitespace outside string values is removed. Pass that
+value unchanged to `updateGroup` when editing other metadata. `getJson()` is
+lossless; `getPreview()` creates a fresh display dictionary using Godot numbers and
+may round values, so never use that preview for an unchanged roundtrip. Create/update
+accept either a new Dictionary (serialized once at full engine precision) or
+`HorizonGroupJsonData.fromJson(original_json)`. The wrapper has no public mutation
+method; invalid JSON/duplicate keys/size/depth/nonfinite values are rejected. Protocol revisions/counts require exact safe integer wire lexemes.
 
 All fourteen actions begin `(user_id,group_id,expected_revision)`:
 

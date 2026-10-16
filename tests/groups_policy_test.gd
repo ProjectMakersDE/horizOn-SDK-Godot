@@ -11,19 +11,19 @@ class ControlledHttp extends HorizonHttpClient:
 	var peak: int = 0
 	func getAsync(endpoint: String, session: bool = false) -> HorizonNetworkResponse:
 		return await _respond("GET", endpoint, {}, session)
-	func postJsonOnceAsync(endpoint: String, body: Dictionary = {}, session: bool = false) -> HorizonNetworkResponse:
-		return await _respond("POST", endpoint, body, session)
-	func putOnceAsync(endpoint: String, body: Dictionary = {}, session: bool = false) -> HorizonNetworkResponse:
-		return await _respond("PUT", endpoint, body, session)
+	func postJsonOnceAsync(endpoint: String, body: Dictionary = {}, session: bool = false, original_json: String = "") -> HorizonNetworkResponse:
+		return await _respond("POST", endpoint, body, session, original_json)
+	func putOnceAsync(endpoint: String, body: Dictionary = {}, session: bool = false, original_json: String = "") -> HorizonNetworkResponse:
+		return await _respond("PUT", endpoint, body, session, original_json)
 	func postAsync(_endpoint: String, _body: Dictionary = {}, _session: bool = false, _headers: PackedStringArray = PackedStringArray()) -> HorizonNetworkResponse:
 		assert(false, "Group writes must not use retrying transport")
 		return HorizonNetworkResponse.failure("Wrong transport")
 	func putAsync(_endpoint: String, _body: Dictionary = {}, _session: bool = false) -> HorizonNetworkResponse:
 		assert(false, "Group PUT must not use retrying transport")
 		return HorizonNetworkResponse.failure("Wrong transport")
-	func _respond(method: String, endpoint: String, body: Dictionary, session: bool) -> HorizonNetworkResponse:
+	func _respond(method: String, endpoint: String, body: Dictionary, session: bool, original_json: String = "") -> HorizonNetworkResponse:
 		assert(session and not responses.is_empty())
-		calls.append({"method": method, "endpoint": endpoint, "body": body.duplicate(true)})
+		calls.append({"method": method, "endpoint": endpoint, "body": body.duplicate(true), "originalJson": original_json})
 		active += 1
 		peak = maxi(peak, active)
 		var next: Dictionary = responses.pop_front()
@@ -60,9 +60,38 @@ func _run() -> void:
 	groups.initialize(http, auth)
 	http.responses = [{"data": _snapshot(1, 1)}]
 	var result: Dictionary = await groups.getGroups(USER)
-	assert(result.success and typeof(result.data.revision) == TYPE_INT and result.data.groups[0].data["$key"][""] == {} and result.data.groups[0].data.revision == 1.5)
-	result.data.groups[0].data.clear()
-	assert(not groups.getCurrentGroups().groups[0].data.is_empty(), "Own snapshot is copied")
+	assert(result.success and typeof(result.data.revision) == TYPE_INT and result.data.groups[0].data.getPreview()["$key"][""] == {} and result.data.groups[0].data.getPreview().revision == 1.5)
+	result.data.groups[0].data.getPreview().clear()
+	assert(not groups.getCurrentGroups().groups[0].data.getPreview().is_empty(), "Own snapshot is copied")
+	var original_data: String = '{"seed":9007199254740993,"huge":123456789012345678901234567890,"decimal":1.0000000000000000000001,"$":{"id":"fake","data":{"":null}},"revision":1.5}'
+	var lossless: HorizonGroupJsonData = HorizonGroupJsonData.fromJson(original_data)
+	assert(lossless != null and lossless.getJson() == original_data)
+	assert(HorizonGroupJsonData.fromJson('  { "space": "a b" }  ').getJson() == '{"space":"a b"}')
+	for invalid: String in ['{"x":1,}', '{"x":[1,]}', '{}{}', '{"x":01}', '{"x":1} garbage', '{"x":1}//comment', '{"x":"line\nraw"}'.replace("\\n", "\n")]:
+		assert(HorizonGroupJsonData.fromJson(invalid) == null, "Strict JSON grammar rejects " + invalid)
+	assert(HorizonGroupJsonData.fromDictionary({"seed":9007199254740993}).getJson().contains("9007199254740993"))
+	var repeated: String = '{"groups":{"groups":[{"id":"' + GROUP + '","data":{"a":1,"b":"é"}}]},"group":{"data": { "b": "\\u00e9", "a": 1 },"id":"' + GROUP + '"}}'
+	var fragments: Dictionary = HorizonGroupJsonData.extract(repeated)
+	assert(not fragments.has("_invalid") and HorizonGroupJsonData.fromJson(fragments[GROUP]).getPreview() == {"a":1.0,"b":"é"}, "Indent/order/string-escape differences must not reject a committed mutation")
+	assert(HorizonGroupJsonData.extract(repeated.replace('"a": 1', '"a": 2')).has("_invalid"), "Conflicting duplicate group data fails closed")
+
+	assert(HorizonGroupJsonData.fromJson('{"a":1,"\\u0061":2}') == null and HorizonGroupJsonData.fromJson('[]') == null)
+	assert(HorizonGroupJsonData.fromJson('{"a":1e999}') == null)
+	var exact: Dictionary = _group(1)
+	exact.data = lossless.getPreview()
+	var raw: String = JSON.stringify(exact).replace(JSON.stringify(exact.data), original_data)
+	http.responses = [{"data": exact, "raw": raw}]
+	var restored: Dictionary = await groups.getGroup(USER, GROUP)
+	assert(restored.success and restored.data.data.getJson() == original_data)
+	var preview: Dictionary = restored.data.data.getPreview()
+	preview.seed = 0
+	assert(restored.data.data.getJson() == original_data and not groups.getCurrentGroups().groups[0].data.getPreview().is_empty())
+	http.responses = [{"failure": 409, "code": "REVISION_CONFLICT"}]
+	assert((await groups.updateGroup(USER, GROUP, 1, "Guild", "", "open", restored.data.data)).errorCode == "REVISION_CONFLICT")
+	assert(http.calls[-1].originalJson.contains(original_data) and http.calls[-1].originalJson.contains('"description":""'))
+	http.responses = [{"data": _snapshot(1, 1)}]
+	assert((await groups.getGroups(USER)).success)
+
 	var count: int = http.calls.size()
 	for revision: Variant in [-1, 1.0, 1.5, "1", true, null, 9007199254740992]:
 		assert((await groups.joinGroup(USER, GROUP, revision)).errorCode == "INVALID_REVISION")

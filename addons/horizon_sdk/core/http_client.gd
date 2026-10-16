@@ -277,8 +277,8 @@ func postOnceAsync(endpoint: String, data: Dictionary = {}, useSessionToken: boo
 
 
 ## One complete JSON POST attempt; empty strings/null are intentional fields.
-func postJsonOnceAsync(endpoint: String, data: Dictionary = {}, useSessionToken: bool = false) -> HorizonNetworkResponse:
-	return await _sendRequest(endpoint, HTTPClient.METHOD_POST, data, useSessionToken, PackedStringArray(), false, true)
+func postJsonOnceAsync(endpoint: String, data: Dictionary = {}, useSessionToken: bool = false, originalJson: String = "") -> HorizonNetworkResponse:
+	return await _sendRequest(endpoint, HTTPClient.METHOD_POST, data, useSessionToken, PackedStringArray(), false, true, originalJson)
 
 
 ## Make a PUT request with JSON body.
@@ -292,8 +292,8 @@ func putAsync(endpoint: String, data: Dictionary = {}, useSessionToken: bool = f
 
 
 ## One PUT attempt for a revision-guarded command without permanent receipts.
-func putOnceAsync(endpoint: String, data: Dictionary = {}, useSessionToken: bool = false) -> HorizonNetworkResponse:
-	return await _sendRequest(endpoint, HTTPClient.METHOD_PUT, data, useSessionToken, PackedStringArray(), false, true)
+func putOnceAsync(endpoint: String, data: Dictionary = {}, useSessionToken: bool = false, originalJson: String = "") -> HorizonNetworkResponse:
+	return await _sendRequest(endpoint, HTTPClient.METHOD_PUT, data, useSessionToken, PackedStringArray(), false, true, originalJson)
 
 
 ## Make a DELETE request.
@@ -344,7 +344,7 @@ func _methodName(method: int) -> String:
 
 
 ## Internal request handler with retry logic.
-func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionToken: bool, extraHeaders: PackedStringArray = PackedStringArray(), allowRetry: bool = true, preserveEmpty: bool = false) -> HorizonNetworkResponse:
+func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionToken: bool, extraHeaders: PackedStringArray = PackedStringArray(), allowRetry: bool = true, preserveEmpty: bool = false, originalJson: String = "") -> HorizonNetworkResponse:
 	if activeHost.is_empty():
 		return HorizonNetworkResponse.failure(
 			"No active host. Call connect() first.",
@@ -364,7 +364,7 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 	headers.append_array(extraHeaders)
 	var bodyJson := ""
 	if not data.is_empty() or method == HTTPClient.METHOD_POST or method == HTTPClient.METHOD_PUT:
-		bodyJson = JSON.stringify(data) if preserveEmpty else _toJsonExcludeEmpty(data)
+		bodyJson = originalJson if not originalJson.is_empty() else (JSON.stringify(data) if preserveEmpty else _toJsonExcludeEmpty(data))
 	var attemptCount := 0
 	var maxAttempts := maxRetryAttempts + 1 if allowRetry else 1
 	# Signup creates a fresh server identity; legacy redemption has no deduplication ID.

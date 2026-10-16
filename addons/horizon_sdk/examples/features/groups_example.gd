@@ -23,13 +23,13 @@ func load_pending(group_id: String) -> Dictionary:
 	if horizon == null: return _failure("SESSION_REQUIRED")
 	return await horizon.groups.getPending(horizon.auth.getCurrentUser().userId, group_id)
 
-func create_group(player_revision: Variant, name: String, mode: String = "open", data: Dictionary = {}) -> Dictionary:
+func create_group(player_revision: Variant, name: String, mode: String = "open", data: Variant = {}) -> Dictionary:
 	var horizon: Node = _authorized()
 	if horizon == null: return _failure("SESSION_REQUIRED")
 	# Capture player_revision once when confirming. No client-selected group UUID.
 	return await horizon.groups.createGroup(horizon.auth.getCurrentUser().userId, player_revision, name, "", mode, data)
 
-func update_group(group_id: String, revision: Variant, name: String, description: String, mode: String, data: Dictionary) -> Dictionary:
+func update_group(group_id: String, revision: Variant, name: String, description: String, mode: String, data: Variant) -> Dictionary:
 	var horizon: Node = _authorized()
 	if horizon == null: return _failure("SESSION_REQUIRED")
 	return await horizon.groups.updateGroup(horizon.auth.getCurrentUser().userId, group_id, revision, name, description, mode, data)
