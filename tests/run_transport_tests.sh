@@ -29,6 +29,7 @@ cd "$test_dir"
 "$GODOT_BIN" --headless --path . --script tests/pending_purchase_test.gd
 "$GODOT_BIN" --headless --path . --script tests/pending_statistics_test.gd
 "$GODOT_BIN" --headless --path . --script tests/pending_gift_code_test.gd
+"$GODOT_BIN" --headless --path . --script tests/pending_inbox_claim_test.gd
 "$GODOT_BIN" --headless --path . --script tests/auth_identity_policy_test.gd
 
 # Runs one Godot contract script against its mock server.

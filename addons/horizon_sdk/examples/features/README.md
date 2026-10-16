@@ -22,6 +22,7 @@ feature's signals and return values.
 | Player Profile | `player_profile_example.gd` |
 | Player Values | `player_values_example.gd` (configure energy-pack; persists uncertain purchase intent) |
 | Statistics | `statistics_example.gd` (configure kills/sum and best_score/max first) |
+| Inbox | `inbox_example.gd` (explicit refresh/claim; persists the authorized original entry ID) |
 | Validated Actions | `validated_actions_example.gd` |
 | Validated Actions: server-owned player state | `validated_state_example.gd` |
 | Validated Actions: evidence upload | `validated_evidence_example.gd` |
