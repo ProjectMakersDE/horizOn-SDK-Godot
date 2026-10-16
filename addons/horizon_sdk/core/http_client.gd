@@ -296,6 +296,23 @@ func putOnceAsync(endpoint: String, data: Dictionary = {}, useSessionToken: bool
 	return await _sendRequest(endpoint, HTTPClient.METHOD_PUT, data, useSessionToken, PackedStringArray(), false, true, originalJson)
 
 
+## Complete original JSON plus explicit revision headers, one transport attempt.
+## Existing Once methods keep their signatures for downstream subclasses.
+func postJsonHeadersOnceAsync(endpoint: String, data: Dictionary, useSessionToken: bool, originalJson: String, extraHeaders: PackedStringArray) -> HorizonNetworkResponse:
+	return await _sendRequest(endpoint, HTTPClient.METHOD_POST, data, useSessionToken, extraHeaders, false, true, originalJson)
+func putJsonHeadersOnceAsync(endpoint: String, data: Dictionary, useSessionToken: bool, originalJson: String, extraHeaders: PackedStringArray) -> HorizonNetworkResponse:
+	return await _sendRequest(endpoint, HTTPClient.METHOD_PUT, data, useSessionToken, extraHeaders, false, true, originalJson)
+
+
+## Read-only JSON query; bounded read retries preserve the captured original body and identity.
+func postJsonAsync(endpoint: String, data: Dictionary = {}, useSessionToken: bool = false, originalJson: String = "") -> HorizonNetworkResponse:
+	return await _sendRequest(endpoint, HTTPClient.METHOD_POST, data, useSessionToken, PackedStringArray(), true, true, originalJson)
+
+## One revision-guarded DELETE attempt. No body or hidden retry.
+func deleteOnceAsync(endpoint: String, useSessionToken: bool = false, extraHeaders: PackedStringArray = PackedStringArray()) -> HorizonNetworkResponse:
+	return await _sendRequest(endpoint, HTTPClient.METHOD_DELETE, {}, useSessionToken, extraHeaders, false)
+
+
 ## Make a DELETE request.
 ## @param endpoint The API endpoint
 ## @param useSessionToken Whether to include Authorization header
@@ -487,6 +504,8 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 		var parsed: Variant = null
 		if trimmed.is_empty():
 			parsed = {}
+		elif endpoint.get_slice("?", 0).begins_with("/api/v1/app/shared-objects/"):
+			parsed = HorizonSharedObjectModels.parse(trimmed)
 		elif endpoint.get_slice("?", 0) in ["/api/v1/app/items", "/api/v1/app/items/catalog", "/api/v1/app/items/adjust", "/api/v1/app/items/equip", "/api/v1/app/items/discard"]:
 			# Item properties may contain NUL, which native JSON silently changes to U+FFFD.
 			# Keep original integer/string values for the feature and request_completed observers.

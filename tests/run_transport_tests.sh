@@ -30,8 +30,9 @@ cd "$test_dir"
 "$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/friends_example.gd
 "$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/groups_example.gd
 "$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/items_example.gd
+"$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/shared_objects_example.gd
 # Godot can exit0 after a script parse error; validate the new native gates before execution.
-for items_test in tests/items_transport_test.gd tests/items_policy_test.gd tests/items_example_test.gd; do
+for items_test in tests/items_transport_test.gd tests/items_policy_test.gd tests/items_example_test.gd tests/shared_objects_transport_test.gd tests/shared_objects_policy_test.gd; do
     "$GODOT_BIN" --headless --path . --check-only --script "$items_test"
 done
 "$GODOT_BIN" --headless --path . --script tests/pending_purchase_test.gd
@@ -90,11 +91,13 @@ run_contract tests/mock_achievements_server.py tests/achievements_transport_test
 run_contract tests/mock_friends_server.py tests/friends_transport_test.gd
 run_contract tests/mock_groups_server.py tests/groups_transport_test.gd
 run_contract tests/mock_items_server.py tests/items_transport_test.gd
+run_contract tests/mock_shared_objects_server.py tests/shared_objects_transport_test.gd
 
 "$GODOT_BIN" --headless --path . --script tests/inbox_policy_test.gd
 "$GODOT_BIN" --headless --path . --script tests/achievements_policy_test.gd
 "$GODOT_BIN" --headless --path . --script tests/friends_policy_test.gd
 "$GODOT_BIN" --headless --path . --script tests/groups_policy_test.gd
+"$GODOT_BIN" --headless --path . --script tests/shared_objects_policy_test.gd
 "$GODOT_BIN" --headless --path . --script tests/items_policy_test.gd
 "$GODOT_BIN" --headless --path . --script tests/items_example_test.gd
 
