@@ -1404,3 +1404,13 @@ Native fixtures use actual HTTP and WebSocket connections for first-message push
 100-ID incremental snapshots, permissions/reconnect, one-attempt faults and original
 lost-ACK recovery. These local proofs are distinct from hosted two-player,
 fanout/CPU/storage measurements and official game integration.
+
+
+Chat also exposes `await Horizon.chat.requestChannelSnapshot(user_id, channel_id, epoch = "", known_message_ids = [])`
+for one explicit raw REST snapshot, including disconnected `NOT_SUPPORTED` checks. Empty epoch
+encodes null; known IDs refer only to the caller's complete snapshot under that original epoch.
+The typed `{success,data,errorCode,error}` result contains the raw incremental envelope. It
+never merges into the managed feed, owns no watch, updates no feed clock and schedules no retry
+or polling. Host/project/session generation changes reject late replies. Keep `watchChannel`
+and acknowledged `syncChannel` for interactive managed feeds.
+Current authenticated401 still clears private feeds; channel denials affect only the captured current watch, so explicit raw reads cannot retain revoked content.
