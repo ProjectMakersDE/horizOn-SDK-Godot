@@ -25,10 +25,26 @@ enum ConnectionStatus {
 }
 
 ## Configuration
-var apiKey: String = ""
+var _contextGeneration: int = 0
+var _routeGeneration: int = 0
+var apiKey: String = "":
+	set(value):
+		if apiKey != value:
+			apiKey = value
+			_contextGeneration += 1
+			_routeGeneration += 1
 var hosts: PackedStringArray = []
-var activeHost: String = ""
-var sessionToken: String = ""
+var activeHost: String = "":
+	set(value):
+		if activeHost != value:
+			activeHost = value
+			_contextGeneration += 1
+			_routeGeneration += 1
+var sessionToken: String = "":
+	set(value):
+		if sessionToken != value:
+			sessionToken = value
+			_contextGeneration += 1
 var connectionTimeoutSeconds: int = 10
 var maxRetryAttempts: int = 3
 var retryDelaySeconds: float = 1.0
@@ -45,6 +61,11 @@ var _pendingRequests: int = 0
 func initialize(logger: HorizonLogger) -> void:
 	_logger = logger
 	_logger.info("HTTP Client initialized")
+
+
+## Synchronous generation catches A→B→A context transitions, even without auth signals.
+func getContextGeneration(include_session: bool = true) -> int:
+	return _contextGeneration if include_session else _routeGeneration
 
 
 ## Get current connection status.
@@ -316,6 +337,7 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 	# A retry belongs to the original request. Never combine its URL/body with a new
 	# project or player session after a sign-out, reconnect or project switch.
 	var requestHost: String = activeHost
+	var requestGeneration: int = getContextGeneration(useSessionToken)
 	var requestKey: String = apiKey
 	var requestToken: String = sessionToken if useSessionToken else ""
 	var url := requestHost + endpoint
@@ -327,11 +349,17 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 		bodyJson = _toJsonExcludeEmpty(data)
 	var attemptCount := 0
 	var maxAttempts := maxRetryAttempts + 1
+	# Signup creates a fresh server identity; legacy redemption has no deduplication ID.
+	# An uncertain outcome must never trigger a second effect within the transport.
+	var route: String = endpoint.get_slice("?", 0)
+	var redemption_id: Variant = data.get("idempotencyId")
+	if method == HTTPClient.METHOD_POST and (route == "/api/v1/app/user-management/signup" or (route == "/api/v1/app/gift-codes/redeem" and (not redemption_id is String or redemption_id.is_empty()))):
+		maxAttempts = 1
 
 	while attemptCount < maxAttempts:
 		attemptCount += 1
 		request_started.emit(url, _methodName(method))
-		if activeHost != requestHost or apiKey != requestKey or (useSessionToken and sessionToken != requestToken):
+		if getContextGeneration(useSessionToken) != requestGeneration or activeHost != requestHost or apiKey != requestKey or (useSessionToken and sessionToken != requestToken):
 			var changed := HorizonNetworkResponse.failure("Request context changed before retry", 0, HorizonErrorCodes.ErrorCode.NETWORK_ERROR)
 			changed.serverCode = "SESSION_CHANGED"
 			return changed
@@ -355,6 +383,11 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 		# Wait for completion
 		var result: Array = await http.request_completed
 		http.queue_free()
+
+		if getContextGeneration(useSessionToken) != requestGeneration:
+			var stale: HorizonNetworkResponse = HorizonNetworkResponse.failure("Request context changed while awaiting response",0,HorizonErrorCodes.ErrorCode.NETWORK_ERROR)
+			stale.serverCode = "SESSION_CHANGED"
+			return stale
 
 		var resultCode: int = result[0]
 		var responseCode: int = result[1]

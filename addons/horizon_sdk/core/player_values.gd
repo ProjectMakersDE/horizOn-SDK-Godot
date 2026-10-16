@@ -21,6 +21,11 @@ func initialize(http: HorizonHttpClient, auth: HorizonAuth) -> void:
 	_auth = auth
 	_auth.signout_completed.connect(_resetIdentity)
 
+## Epoch for peer feature responses; cache invalidation fences late handoffs.
+func getCacheEpoch() -> int:
+	_syncIdentity()
+	return _epoch
+
 func getCurrentState() -> Dictionary:
 	_syncIdentity()
 	return _state.duplicate(true)
@@ -138,7 +143,7 @@ func _begin(user_id: String) -> bool:
 	return lastErrorCode.is_empty()
 
 func _syncIdentity() -> void:
-	var value: String = _auth.getCurrentUser().userId + "|" + _http.sessionToken + "|" + _http.apiKey + "|" + _http.activeHost
+	var value: String = JSON.stringify([_auth.getCurrentUser().userId,_http.sessionToken,_http.apiKey,_http.activeHost,_http.getContextGeneration()])
 	if value != _identity:
 		_resetIdentity()
 		_identity = value
@@ -238,15 +243,31 @@ static func _validOperationId(value: String) -> bool:
 	return expression.search(value) != null and int(value.get_slice(":", 0)) > 0
 
 static func _safeJsonIntegers(json: String) -> bool:
-	var expression := RegEx.new()
-	expression.compile('"(balance|earnedToday|dailyCap|amount|revision|definitionVersion|purchasesPerDay)"\\s*:\\s*([^,}\\]\\s]+)')
-	for item: RegExMatch in expression.search_all(json):
-		var value := item.get_string(2)
-		if value == "null" and item.get_string(1) in ["dailyCap", "purchasesPerDay"]:
-			continue
-		if not value.is_valid_int() or value.length() > 17 or not _safeNumber(int(value)):
-			return false
-	return true
+	# Tokenize whole JSON strings, so escaped keys are decoded and opaque giftData stays opaque.
+	# Track objects independently to reject duplicate decoded names without confusing array entries.
+	var tokens: RegEx = RegEx.new()
+	tokens.compile('"(?:[^"\\\\]|\\\\.)*"|[{}\\[\\]:,]|true|false|null|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?')
+	var matches: Array[RegExMatch] = tokens.search_all(json)
+	var containers: Array = []
+	var integer: RegEx = RegEx.create_from_string("^-?(0|[1-9][0-9]*)\\z")
+	var fields: Array[String] = ["balance","earnedToday","dailyCap","amount","revision","definitionVersion","purchasesPerDay"]
+	for index: int in range(matches.size()):
+		var text: String = matches[index].get_string()
+		if text == "{": containers.append({})
+		elif text == "[": containers.append(null)
+		elif text == "}" or text == "]":
+			if containers.is_empty() or (text == "}") != (containers.back() is Dictionary): return false
+			containers.pop_back()
+		elif text.begins_with('"') and index + 1 < matches.size() and matches[index + 1].get_string() == ":":
+			var key: Variant = JSON.parse_string(text)
+			if not key is String or containers.is_empty() or not containers.back() is Dictionary or containers.back().has(key): return false
+			containers.back()[key] = true
+			if not key in fields: continue
+			if index + 2 >= matches.size(): return false
+			var number: String = matches[index + 2].get_string()
+			if number == "null" and key in ["dailyCap","purchasesPerDay"]: continue
+			if integer.search(number) == null or number.length() > 17 or not _safeNumber(int(number)): return false
+	return containers.is_empty()
 
 static func _responseCode(response: HorizonNetworkResponse) -> String:
 	return response.serverCode if not response.serverCode.is_empty() else "HTTP_%d" % response.statusCode
