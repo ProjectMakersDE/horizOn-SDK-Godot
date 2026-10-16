@@ -40,13 +40,14 @@ func _run() -> void:
 	_player(A)
 	var result: Dictionary = await sample.refresh_groups()
 	assert(result.success and typeof(result.data.revision) == TYPE_INT and result.data.revision == R)
-	var data: Dictionary = {"revision": 1.5, "$key": {"a.b": [], "": {}}}
+	var data: HorizonGroupJsonData = HorizonGroupJsonData.fromJson('{"revision":1.5,"$key":{"a.b":[],"":{}},"fraction":1e-10,"seed":9007199254740993,"huge":123456789012345678901234567890,"precise":1.0000000000000000000001,"unicode":"é/😀"}')
+	assert(data != null and data.getJson().contains("é/😀"))
 	result = await sample.create_group(R, "Guild", "open", data)
 	assert(result.success and result.data.group.id == G and result.data.group.myRole == "leader")
 	result = await sample.inspect_group(G)
 	if not result.success: print("Group detail diagnostic: ", result)
 	assert(result.success, str(result))
-	data.fraction = 1e-10
+	data = result.data.data
 	result = await sample.update_group(G, 1, "Guild", "", "request", data)
 	if not result.success: print("Group update diagnostic: ", result)
 	assert(result.success)
@@ -91,11 +92,11 @@ func _run() -> void:
 	_player(A)
 	assert((await sample.confirm_action("join", J, 42)).data.group.myRole == "member")
 	assert((await sample.confirm_action("leave", J, 43)).data.group == null)
-	data.erase("fraction")
+	assert(data.getJson().contains("9007199254740993") and data.getJson().contains("123456789012345678901234567890") and data.getJson().contains("1.0000000000000000000001"))
 	assert((await sample.create_group(R + 1000, "Guild", "open", data)).errorCode == "HTTP_503")
 	assert((await sample.refresh_groups()).data.groups[0].id == H, "Explicit read reconciles uncertain creation, no second create")
 	assert((await sample.confirm_action("invite", H, 1, B)).errorCode == "INBOX_FULL")
-	data.fraction = 1e-10
+
 	assert((await sample.update_group(H, 1, "Guild", "", "request", data)).errorCode == "HTTP_503")
 	assert((await sample.inspect_group(H)).data.revision == 2, "PUT has exactly one actual transport attempt")
 	assert((await sample.confirm_action("delete", H, 2)).errorCode == "RATE_LIMITED")

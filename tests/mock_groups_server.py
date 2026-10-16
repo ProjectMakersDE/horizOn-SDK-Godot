@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Groups contract fixture; Godot-only loopback20110, every request exact and bounded."""
 import copy,datetime,json,os,sys,time
+from decimal import Decimal
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from mock_http import report_rejection,send_json
 A="00000000-0000-4000-8000-000000001010"
@@ -16,7 +17,7 @@ def stamp(): return (datetime.datetime(2026,10,16,12,tzinfo=datetime.timezone.ut
 def display(): return {"name":None,"profile":{"avatarId":None,"frameId":None,"badges":[]},"email":"must-not-leak"}
 def group(revision,actor=A,leader=A,count=1,mode="request",id=G,private=True):
  result={"id":id,"revision":revision,"name":"Guild","description":"Description","joinMode":mode,"leaderId":leader,"memberCount":count,"createdAt":"2026-10-16T12:00:00Z","updatedAt":stamp()}
- if private:result.update(myRole="leader" if actor==leader else "member",data={"revision":1.5,"$key":{"a.b":[],"":{}},"fraction":1e-10})
+ if private:result.update(myRole="leader" if actor==leader else "member",data={"revision":1.5,"$key":{"a.b":[],"":{}},"fraction":1e-10,"seed":9007199254740993,"huge":123456789012345678901234567890,"precise":"__precise__","unicode":"é/😀"})
  return result
 def snapshot(actor,groups=None,incoming=None,outgoing=None):
  return {"userId":actor,"revision":R+len(EXPECTED),"groups":groups or [],"incomingInvites":incoming or [],"outgoingRequests":outgoing or [],"limits":{"maxMembers":20,"maxGroupsPerPlayer":1,"maxInvitations":20,"maxJoinRequests":20,"maxDataBytes":2048,"memberPageSize":50},"serverTime":stamp()}
@@ -33,10 +34,10 @@ def action(name,revision,actor,result_group,target=None,request=None):
  if name=="request":own["outgoingRequests"]=[pending({5:2,7:3,17:7}[revision],revision+1,actor)]
  add("POST",BASE+"/"+G+"/"+name,actor,body,{"groups":own,"group":result_group})
 read(A)
-create={"userId":A,"expectedPlayerRevision":R,"name":"Guild","description":"","joinMode":"open","data":{"revision":1.5,"$key":{"a.b":[],"":{}}}}
+create={"userId":A,"expectedPlayerRevision":R,"name":"Guild","description":"","joinMode":"open","data":group(1)["data"]}
 add("POST",BASE,A,create,{"groups":snapshot(A,[group(1,mode="open")]),"group":group(1,mode="open")})
 add("GET",BASE+"/"+G+"?userId="+A,A,None,group(1,mode="open"))
-update={"userId":A,"expectedRevision":1,"name":"Guild","description":"","joinMode":"request","data":{"revision":1.5,"$key":{"a.b":[],"":{}},"fraction":1e-10}}
+update={"userId":A,"expectedRevision":1,"name":"Guild","description":"","joinMode":"request","data":group(2)["data"]}
 add("PUT",BASE+"/"+G,A,update,{"groups":snapshot(A,[group(2)]),"group":group(2)})
 action("invite",2,A,group(3),target=B)
 read(B,incoming=[pending(1,3)])
@@ -89,6 +90,8 @@ last=list(EXPECTED[-1]);last[-1]=.12;EXPECTED[-1]=tuple(last)
 routes={(method,path.split("?",1)[0].replace(G,"{groupId}").replace(H,"{groupId}").replace(J,"{groupId}")) for method,path,*_ in EXPECTED}
 assert len(routes)==20,routes
 
+def encode(value):return json.dumps(value,ensure_ascii=False,separators=(",",":")).replace('"__precise__"','1.0000000000000000000001')
+def decode(value):return json.loads(value,parse_float=Decimal)
 class Handler(BaseHTTPRequestHandler):
  seen=0;failure=None
  def do_GET(self):self.handle_case("GET")
@@ -98,11 +101,19 @@ class Handler(BaseHTTPRequestHandler):
   index=type(self).seen;type(self).seen+=1
   if index>=len(EXPECTED):return self.reject("unexpected Groups retry/page-loop")
   verb,path,actor,expected,status,result,delay=EXPECTED[index]
-  body=json.loads(self.rfile.read(int(self.headers.get("Content-Length",0)))) if method in ["POST","PUT"] else None
+  body=decode(self.rfile.read(int(self.headers.get("Content-Length",0)))) if method in ["POST","PUT"] else None
+  expected=decode(encode(expected))
   if (method,self.path,body)!=(verb,path,expected):return self.reject("wrong route/original revision/requestId at request%d"%index)
   if self.headers.get("X-API-Key")!="groups-key" or self.headers.get("Authorization")!="Bearer group-session-"+("a" if actor==A else "b"):return self.reject("wrong player/project authentication")
   if delay:time.sleep(delay)
-  try:send_json(self,status,result,{"Retry-After":"1"} if status==429 else None)
+  try:
+   # The same GroupView occurs at different depths: valid pretty JSON must not
+   # turn a committed metadata update into INVALID_RESPONSE.
+   wire=json.dumps(result,ensure_ascii=False,indent=2).replace('"__precise__"','1.0000000000000000000001') if index==3 else encode(result)
+   payload=wire.encode("utf-8")
+   self.send_response(status);self.send_header("Content-Type","application/json");self.send_header("Content-Length",str(len(payload)))
+   if status==429:self.send_header("Retry-After","1")
+   self.end_headers();self.wfile.write(payload)
   except (BrokenPipeError,ConnectionResetError):
    if delay!=1.4:self.reject("unexpected disconnect")
  def reject(self,message):
