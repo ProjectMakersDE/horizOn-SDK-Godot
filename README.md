@@ -1252,3 +1252,87 @@ one503/429/timeout Shared Objects mutation attempt. Each normal feature call add
 one logical HTTP request (read retries are bounded); one explicit pending recovery
 page adds two usage reads and one owner query. No recovery pages run automatically. Native
 engine, exact-source CI and backend/runtime proof are recorded separately.
+
+
+## Matches: explicit asynchronous turns and result consensus
+
+`Horizon.matches` uses the currently signed-in player session. All methods return
+`{success, data, errorCode, error}`. Pass exact integer revisions from the state the
+player actually reviewed. There are four reads and ten one-attempt commands:
+
+| Method | Arguments after `user_id` |
+| --- | --- |
+| `getMatches` | `recovery = false` |
+| `getLimits` | none |
+| `findOpenMatches` | `minimum_strength, maximum_strength, limit = 20, cursor = ""` |
+| `getMatch` | `match_id, recovery = false` |
+| `createMatch` | `expected_player_revision, options` |
+| `joinMatch`, `declineInvite`, `advanceTimeout`, `leaveMatch`, `cancelMatch` | `match_id, expected_revision` |
+| `startMatch` | `match_id, expected_revision, turn_order` |
+| `submitTurn` | `match_id, expected_revision, state: PackedByteArray, finish = false` |
+| `reportResult` | `match_id, final_state_revision, result: PackedByteArray, winner_ids` |
+| `startRankedRun` | `match_id, final_state_revision` |
+
+UUID arguments are normalized to their canonical lowercase representation before
+sending or comparing effects; uppercase invitees cannot turn a committed create
+into an apparent failure. Create options use the exact fields `name`, `capacity`, `visibility`, `strength`,
+`turnSeconds`, `timeoutPolicy`, `ranked`, `dataBase64`, `inviteeIds`. Use
+`Horizon.matches.encodeState(bytes)` for canonical Base64. Views retain wire
+`dataBase64` and add `data: PackedByteArray`; invite-only metadata has both null.
+Reports similarly expose exact `resultBase64` and `result: PackedByteArray`. Safe
+integer lexemes, nullable deadlines, false and empty byte arrays survive parsing.
+A name containing U+0000 is a lossless `HorizonItemStringData`: use `getJson()` for
+exact serialization and its marked display preview for UI. No game JSON decoding
+or client-authored rewards occur. An active match can appear in `recent` after the
+current player forfeits while other players continue.
+
+The executable [`matches_example.gd`](addons/horizon_sdk/examples/features/matches_example.gd)
+uses a separate signed-in client for each of two players: read ledger, persist
+create with original ledger revision, invite/accept/start, alternate byte-state
+turns, finish, then collect both immutable result reports. A missing report leaves
+an unconfirmed result; disagreement remains visible as disputed. Explicit timeout
+advancement applies the configured skip/forfeit policy. `notificationPending=true`
+means the move succeeded while its original Inbox notice awaits room. Do not send
+another move to deliver it. Realtime only invalidates: subscribe to an authorized
+`matches:<id>` through the existing realtime manager and explicitly reread after
+reconnect. There is no background polling or automatic timeout, report or paging.
+
+Every sample write is saved before HTTP under project/player/feature identity.
+Host, session and monotone generation fence responses without selecting a new
+pending file. Storage errors, restarts, callbacks, context changes and uncertain
+responses retain the original. A busy or unresolved earlier action blocks new
+writes. `inspect_pending()` only reads. After displaying recovered state,
+`acknowledge_reconciliation()` requires an explicit decision and a higher monotone
+ledger/match revision, which prevents a still-late original CAS from applying.
+404 alone proves no outcome. Lost decline/lobby-leave acknowledgements use the
+complete player ledger: absence of the original match removes membership/invite
+authority, while a retained match requires a higher original revision. Explicit
+`RUN_EXPIRED`/`RUN_ALREADY_USED` responses allow a separate terminal acknowledgement
+of the original ranked intent; they never start a replacement run. An immutable report/ranked request may instead use
+`retry_original_report_or_run()` with the original final revision and bytes.
+Never silently replace a revision, create ID or result after timeout.
+
+Ordinary reads obey `pollAfterSeconds`; `recovery=true` is an explicit recovery
+read, and exact next-cursor pages can be requested immediately. No automatic page
+traversal occurs, including empty consumed pages with a cursor. Eight response
+cache entries and bounded revision/time histories are scoped to host/project/
+player/session generation, including ABA; signal callbacks cannot adopt old data.
+
+Optional Cloud-only ranked starts require a confirmed match and its original final
+revision. The response enters `Horizon.validatedActions` with the original run ID,
+seed, ticket and expiry, so existing submit/evidence flows apply. General and
+match starts share an owned in-flight lease held through callbacks. A foreign
+active run blocks match start; an adopted match run blocks general start until
+explicit discard or submission. Original recovery may reseal the same ticket;
+it cannot create another run after expiry/consumption. The sample submits the
+game's actual score/input log for a short post-match rule check. This does not
+retrospectively simulate the asynchronous game or establish an anti-cheat claim.
+PHP ordinary REST is supported; capability flags disable ranked/realtime and
+`501 FEATURE_NOT_SUPPORTED` remains visible.
+
+Each explicit command sends one HTTP request; bounded GET retries preserve the
+same request context. Existing authentication/rate-limit work is additional. No
+SDK calls or timers generate hidden traffic. The native fixture exercises all14
+routes with two sessions, original durable CAS, opaque bytes, full-Inbox pending,
+reports, one-attempt faults, recovery and common VA start/submit ownership; these
+are local contract proofs, separate from hosted capacity measurements.

@@ -156,6 +156,13 @@ var _leaderboard: HorizonLeaderboard
 
 ## State
 var _currentRun: Dictionary = {}
+## Generic and match-bound starts share one monotonically owned in-flight lease.
+var _runStartSerial: int = 0
+var _runStartLease: int = 0
+var _currentRunIsMatch: bool = false
+var _currentRunMatchId: String = ""
+var _currentRunMatchRevision: int = 0
+var _currentRunMatchProject: String = ""
 var _currentRunUserId: String = ""
 var _lastErrorCode: String = ""
 ## Code of the last evidence upload, automatic or manual (Part 3)
@@ -223,18 +230,64 @@ func startRun(leaderboard_key: String = "", context: Dictionary = {}) -> Diction
 	if not runContext.is_empty():
 		request["context"] = runContext
 
+	if _currentRunIsMatch and not _currentRun.is_empty():
+		return _fail("Discard or submit the active match run before a new run", "RUN_IN_PROGRESS", false)
+	var lease: int = _claimRunStart()
+	if lease == 0:
+		return _fail("A run start is already in progress", "RUN_IN_PROGRESS", false)
 	var response := await _http.postAsync(ENDPOINT_RUNS, request, true)
 
 	if response.isSuccess and response.data is Dictionary:
 		var run := HorizonValidatedRun.fromDict(response.data).toDict()
 		_currentRun = run.duplicate(true)
+		_currentRunIsMatch = false
 		_currentRunUserId = user.userId
 		_lastErrorCode = ""
 		_logger.info("Validated run started: %s" % run["runId"])
 		run_started.emit(run)
+		_releaseRunStart(lease)
 		return run
 
-	return _fail(_errorMessage(response, "Failed to start validated run"), _errorCodeOf(response), false)
+	var failure: Dictionary = _fail(_errorMessage(response, "Failed to start validated run"), _errorCodeOf(response), false)
+	_releaseRunStart(lease)
+	return failure
+
+
+## Internal cooperation with the match manager. Auth changes never unlock an older request's lease.
+func _claimRunStart() -> int:
+	if _runStartLease != 0: return 0
+	_runStartSerial += 1
+	_runStartLease = _runStartSerial
+	return _runStartLease
+
+func _releaseRunStart(lease: int) -> void:
+	if lease != 0 and lease == _runStartLease: _runStartLease = 0
+
+## Only a strictly parsed, same-context match response enters the existing submit/evidence flow.
+func _acceptMatchRun(run: Dictionary, user_id: String, generation: int, lease: int, match_id: String, final_revision: int) -> bool:
+	if lease == 0 or _runStartLease != lease or generation != _http.getContextGeneration() or not _isCurrentPlayer(user_id) or _auth.getCurrentUser().accessToken != _http.sessionToken: return false
+	if _currentRunIsMatch and (_currentRunMatchId != match_id or _currentRunMatchRevision != final_revision or _currentRunMatchProject != _http.apiKey): return false
+	if not _currentRun.is_empty():
+		for field: String in ["runId", "seed", "leaderboardKey", "issuedAt", "expiresAt"]:
+			if _currentRun.get(field) != run[field]: return false
+	_currentRun = run.duplicate(true)
+	_currentRunIsMatch = true
+	_currentRunMatchId = match_id
+	_currentRunMatchRevision = final_revision
+	_currentRunMatchProject = _http.apiKey
+	_currentRunUserId = user_id
+	_lastErrorCode = ""
+	run_started.emit(run.duplicate(true))
+	return true
+
+
+## An explicit terminal original-intent ACK may retire only this adopted match run.
+## This never releases an in-flight start lease or touches a foreign/general run.
+func _retireMatchRun(user_id: String, match_id: String, final_revision: int, generation: int) -> bool:
+	if generation != _http.getContextGeneration() or not _hasSession() or not _isCurrentPlayer(user_id) or _auth.getCurrentUser().accessToken != _http.sessionToken: return false
+	if not _currentRunIsMatch or _currentRunMatchId != match_id or _currentRunMatchRevision != final_revision or _currentRunMatchProject != _http.apiKey: return false
+	discardRun()
+	return true
 
 
 ## Submit the result of the current run. Hashes the input log (SHA-256)
@@ -363,6 +416,10 @@ func discardRun() -> void:
 	if not _currentRun.is_empty():
 		_logger.debug("Validated run discarded: %s" % _currentRun.get("runId", ""))
 	_currentRun = {}
+	_currentRunIsMatch = false
+	_currentRunMatchId = ""
+	_currentRunMatchRevision = 0
+	_currentRunMatchProject = ""
 	_currentRunUserId = ""
 
 
