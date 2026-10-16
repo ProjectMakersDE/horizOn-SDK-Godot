@@ -19,7 +19,7 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https
 | 🔐 **Authentication** | Email, anonymous, Google, and Apple sign-in/sign-up |
 | 🏆 **Leaderboards** | Submit scores, get rankings, view top players |
 | ☁️ **Cloud Saves** | Save and load player progress (JSON or binary) |
-| 🔄 **Realtime** | Optional Cloud invalidations for inbox, friends, matches and chat; HTTP content reload |
+| 🔄 **Realtime** | Optional Cloud invalidations for inbox, friends, groups, matches and chat; HTTP content reload |
 | ⚙️ **Remote Config** | Server-side configuration values |
 | 🌐 **Localization** | Server-side translations in 15 languages |
 | 📰 **News** | In-game news and announcements |
@@ -28,6 +28,7 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https
 | 📈 **Statistics** | One session batch for sum/max/min/last counters with optional UTC daily/weekly resets |
 | 📬 **Inbox** | Bounded personal/project notifications, read/remove and atomic Player Values claims |
 | 👥 **Friends** | Exact public lookup, explicit request actions and private own-player relationships |
+| 🛡️ **Groups** | Explicit guild/team membership, roles, private data and bounded member pages |
 | ✅ **Validated Actions** | Server-checked runs: single-use tickets, server seed, rule checks before a score is written |
 | 💬 **Feedback** | Submit bug reports and feature requests |
 | 📊 **User Logs** | Server-side player event tracking |
@@ -972,3 +973,75 @@ wire integer/duplicate-name rejection, retained downgrade lists, crossed request
 revision/time floors, serialization and context/queue/completion-callback races. These local
 fixtures verify SDK transport and cache behavior; backend transactions and real Cloud realtime
 are separate acceptance evidence.
+
+
+## Groups: explicit reviewed player commands
+
+`Horizon.groups` returns dictionaries `{success,data,errorCode,error}` and emits
+`groups_loaded`, `groups_updated`, `group_loaded`, `members_loaded`, `pending_loaded`
+and `groups_failed(error,code)`. Read methods are `getGroups(user_id)`,
+`getGroup(user_id,group_id)`, `getMembers(user_id,group_id,after_user_id="",limit=50)`
+and `getPending(user_id,group_id)`. A page is one bounded HTTP request, with its own
+revision and explicit cursor; there is no automatic page drain or polling. Restart
+explicitly if a later page has another group revision. Public member displays keep
+nullable names/profile IDs and exclude credentials, private profiles and activity.
+
+```gdscript
+var own: Dictionary = await Horizon.groups.getGroups(user_id)
+if own.success:
+    # Capture this original revision when the player confirms creation.
+    var created: Dictionary = await Horizon.groups.createGroup(
+        user_id, own.data.revision, "Guild", "Description", "open", {"region": "EU"})
+    if created.success:
+        var group: Dictionary = created.data.group
+        var page: Dictionary = await Horizon.groups.getMembers(user_id, group.id)
+        # Render/confirm later actions using this reviewed group revision.
+        print(group.id, group.revision, page.data if page.success else page.errorCode)
+```
+
+`createGroup(user,expected_player_revision,name,description="",join_mode="open",data={})`
+accepts no caller group ID. `updateGroup(user,group,expected_revision,name,description,join_mode,data)`
+replaces every metadata field. Both use JSON objects (including empty `{}`), finite
+numbers, depth16 and at most2048 serialized UTF-8 bytes; names120/description1024
+UTF-8 bytes. Dotted, empty and dollar-prefixed data keys and decimal data fields
+remain legal. Protocol revisions/counts require exact safe integer wire lexemes.
+
+All fourteen actions begin `(user_id,group_id,expected_revision)`:
+
+| Method | Additional arguments |
+|---|---|
+| `joinGroup`, `requestJoin`, `leaveGroup`, `deleteGroup` | none |
+| `invitePlayer`, `removeMember`, `transferLeadership` | `target_user_id` |
+| `acceptInvite`, `declineInvite`, `cancelRequest` | original `request_id` |
+| `cancelInvite`, `acceptRequest`, `declineRequest` | `target_user_id`, original `request_id` |
+| `setMemberRole` | `target_user_id`, `role` (`officer`/`member`) |
+
+Every command uses exactly one transport attempt, including PUT, code-free429,
+503 and timeout. It never refreshes revisions, replaces request UUIDs or creates a
+new guest after failure. Read state and ask for a new explicit decision after an
+uncertain result. Mutations return `{groups:MyGroupsView,group:GroupView|null}`;
+`groups` is the acting player's complete replacement snapshot, never the target's.
+`getCurrentGroups()` gives a deep copy and is a cached view, not authorization.
+Private data is exposed only with the current session's member role; pending
+metadata always strips it. Invalid or partial responses never replace the cache or
+advance freshness floors. Project/host/session ABA, queued work, signout and
+synchronous callbacks fence old responses. Detail freshness memory is bounded48
+records; own-player revision/server-time floors survive explicit cache clears.
+
+Global retained maxima500 members/5 memberships and20 invitations/requests remain
+readable after a smaller tier is applied. Server limits and role/block checks are
+authoritative. A full Inbox error stays atomic at the server and is returned for an
+explicit UI decision. Sole-leader deletion cannot dismantle a nonempty group;
+transfer leadership before leaving. No group currency, hidden reads or admin write
+impersonation is added. Optional hosted `groups:<groupId>` realtime is only an
+invalidation hint; subscribe explicitly after membership and reload HTTP after
+reconnect. simpleServer supports the same REST contract and no realtime transport.
+
+The runnable `examples/features/groups_example.gd` contains explicit create/read,
+one member page, all confirmed actions and no identity/revision fallback. Native
+policy and exact real loopback HTTP fixtures execute that actual sample with two
+players, all20 routes, role/transfer/leave, full-Inbox refusal and uncertain command
+reconciliation. These transport tests are distinct from hosted/database acceptance.
+A mutation is one HTTP request; bounded read retries follow the shared transport
+policy. Group/player CAS, block/profile projections and Inbox delivery are server
+costs; the SDK does not multiply them through polling or automatic page loops.

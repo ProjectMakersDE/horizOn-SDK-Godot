@@ -40,3 +40,9 @@ player profile, validated state and validated evidence scripts say what to set u
 
 For a guided first run that connects, signs in, and submits a score,
 see `../hello_horizon/`.
+
+Groups: `groups_example.gd` provides explicit authenticated create/update, one member
+page and all fourteen caller-confirmed actions. Preserve reviewed revisions and
+request UUIDs after uncertainty; reconcile with an explicit read. The actual sample
+is executed by the two-player Groups HTTP fixture; it neither polls nor replaces
+a guest identity. Transfer leadership before leaving; private data stays member-only.
