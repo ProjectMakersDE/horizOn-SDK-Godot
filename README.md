@@ -800,3 +800,20 @@ if not result.success:
 ```
 
 Retain the same operation ID and payload for retries after a timeout. Never generate another ID automatically after `OPERATION_EXPIRED`; refresh and reconcile first. IDs use learned server time plus monotonic elapsed time; local UTC is the fallback before loading state/offers (`hasServerClock() == false`). Amounts must be Godot `int` values within +/-9,007,199,254,740,991; float inputs and unsafe numeric response tokens are rejected. Values/costs/deltas return as int64 and nullable daily caps remain null (zero is a real cap). Cache getters return deep copies, revision/time watermarks survive catalogue invalidation and `clearCache()` rejects earlier in-flight requests. Session/project/host changes discard old state. Realtime is optional: refresh HTTP state after a validated run or another balance mutation. No automatic purchase/poll loop exists.
+
+### Statistics sample recovery
+
+The minimal `examples/features/statistics_example.gd` keeps its original binary
+Variant batch under a project/player SHA-256 filename, independent of host or
+access token. The sample validates the exact user, operation ID, keys and safe
+integer payload before sending. Old user-only files cannot be safely assigned to
+a project: they remain untouched and block a replacement until reconciled.
+Atomic directory locks protect intent creation/completion across processes; stale
+locks and interrupted writes require manual reconciliation. A successful delayed
+response cannot delete another intent. Snapshot reads and expired/unknown results
+never release or regenerate a pending operation.
+
+Before guest signup/restore, a durable identity marker prevents a lost signup
+response or missing cache from creating another guest on restart. Recover the
+original identity rather than deleting this guard. Corrupt caches and unusable
+tokens fail closed. This changes only the executable sample and its tests.
