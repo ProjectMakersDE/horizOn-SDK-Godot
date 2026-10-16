@@ -92,6 +92,22 @@ func getCached(channel_id: String) -> Dictionary:
 func getServerTime() -> String:
 	_syncScope()
 	return "" if _clockMillis < 0 else HorizonChatModels.stamp(_effectiveMillis())
+## One explicit raw REST read, including disconnected capability checks. Never adopts a feed.
+## Empty epoch encodes null. Known IDs describe only the caller's original complete snapshot.
+func requestChannelSnapshot(user_id: String, channel_id: String, epoch: String = "", known_message_ids: Array[String] = []) -> Dictionary:
+	if not HorizonChatModels.uuid(channel_id) or (not epoch.is_empty() and not HorizonChatModels.uuid(epoch)) or not HorizonChatModels.ids(known_message_ids): return _fail("INVALID_REQUEST")
+	var original: Dictionary = {"epoch": null if epoch.is_empty() else epoch, "knownMessageIds": known_message_ids.duplicate()}
+	var result: Dictionary = await _request(user_id, "sync", channel_id, original, true)
+	result.erase("_httpStatus")
+	if not result.success: return result
+	var known: Array = original.knownMessageIds if original.epoch == result.data.channel.epoch else []
+	var returned: Dictionary = {}
+	for row: Dictionary in result.data.messages:
+		if row.id in known: return _fail("INVALID_RESPONSE")
+		returned[row.id] = true
+	for id: String in result.data.visibleMessageIds:
+		if not returned.has(id) and id not in known: return _fail("INVALID_RESPONSE")
+	return result
 ## Explicit read is allowed only on an acknowledged current subscription, never offline fallback.
 func syncChannel(user_id: String, channel_id: String) -> Dictionary:
 	_syncScope()
@@ -130,7 +146,7 @@ func syncChannel(user_id: String, channel_id: String) -> Dictionary:
 		_watches[channel_id].syncing = false
 		if _watches[channel_id].dirty and _available(channel_id): _drain.call_deferred(channel_id, serial)
 	return result
-func _request(user: String, kind: String, id: String = "", options: Dictionary = {}) -> Dictionary:
+func _request(user: String, kind: String, id: String = "", options: Dictionary = {}, raw_snapshot: bool = false) -> Dictionary:
 	_syncScope()
 	if not _session(): return _fail("SESSION_REQUIRED")
 	if not _authorized(user): return _fail("SESSION_FORBIDDEN")
@@ -153,12 +169,12 @@ func _request(user: String, kind: String, id: String = "", options: Dictionary =
 	else:
 		payload.userId = user
 		var raw: String = HorizonSharedObjectModels.encode(payload)
-		response = await _http.postJsonAsync(path, payload, true, raw) if kind == "sync" else await _http.postJsonOnceAsync(path, payload, true, raw)
+		response = await _http.postJsonAsync(path, payload, true, raw) if kind == "sync" and not raw_snapshot else await _http.postJsonOnceAsync(path, payload, true, raw)
 	_syncScope()
 	if scope != _scope: return _fail("STALE_RESPONSE")
 	if not response.isSuccess:
 		var code: String = HorizonInbox._responseCode(response)
-		if kind != "sync":
+		if kind != "sync" or raw_snapshot:
 			if response.statusCode == 401: clearCache()
 			elif response.statusCode in [403, 404] and not id.is_empty():
 				if watched != _watchBinding(id): return _fail("STALE_RESPONSE")
@@ -166,6 +182,7 @@ func _request(user: String, kind: String, id: String = "", options: Dictionary =
 		return _requestFailure(kind, code, response.error, response.statusCode)
 	var data: Dictionary = HorizonChatModels.envelope(response.rawBody, kind, user, id, options)
 	if data.is_empty(): return _requestFailure(kind, "INVALID_RESPONSE")
+	if raw_snapshot: return {"success": true, "data": data, "errorCode": "", "error": ""}
 	var server: int = HorizonChatModels.millis(data.serverTime)
 	if server < _serverMillis: return _requestFailure(kind, "STALE_RESPONSE")
 	_clockMillis = maxi(server, _effectiveMillis())
