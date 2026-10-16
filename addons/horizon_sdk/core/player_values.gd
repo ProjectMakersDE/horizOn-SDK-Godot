@@ -242,7 +242,7 @@ static func _validOperationId(value: String) -> bool:
 	expression.compile("^[0-9]{1,16}:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 	return expression.search(value) != null and int(value.get_slice(":", 0)) > 0
 
-static func _safeJsonIntegers(json: String) -> bool:
+static func _safeJsonIntegers(json: String, fields: Array[String] = ["balance", "earnedToday", "dailyCap", "amount", "revision", "definitionVersion", "purchasesPerDay"]) -> bool:
 	# Tokenize whole JSON strings, so escaped keys are decoded and opaque giftData stays opaque.
 	# Track objects independently to reject duplicate decoded names without confusing array entries.
 	var tokens: RegEx = RegEx.new()
@@ -250,7 +250,6 @@ static func _safeJsonIntegers(json: String) -> bool:
 	var matches: Array[RegExMatch] = tokens.search_all(json)
 	var containers: Array = []
 	var integer: RegEx = RegEx.create_from_string("^-?(0|[1-9][0-9]*)\\z")
-	var fields: Array[String] = ["balance","earnedToday","dailyCap","amount","revision","definitionVersion","purchasesPerDay"]
 	for index: int in range(matches.size()):
 		var text: String = matches[index].get_string()
 		if text == "{": containers.append({})
