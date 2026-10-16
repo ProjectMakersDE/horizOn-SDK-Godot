@@ -656,3 +656,14 @@ reconciliation. These transport tests are distinct from hosted/database acceptan
 A mutation is one HTTP request; bounded read retries follow the shared transport
 policy. Group/player CAS, block/profile projections and Inbox delivery are server
 costs; the SDK does not multiply them through polling or automatic page loops.
+
+### Items
+
+`Horizon.items` exposes `getInventory`, one-page `getCatalog`, `adjustProperties`,
+`setEquipped` and `discardItem`, with `{success,data,errorCode,error}` results and
+explicit original instance/revision arguments. Every inventory mutation sends once;
+read and reconcile uncertainty explicitly. Player Values offers/receipts add
+`itemRewards`/`items` with backwards-compatible empty defaults. Persist purchase IDs
+before HTTP and fetch inventory explicitly after success. The executable
+`examples/features/items_example.gd` and the repository README describe durable
+recovery, strict integer/canonical property limits and lossless NUL-string values.

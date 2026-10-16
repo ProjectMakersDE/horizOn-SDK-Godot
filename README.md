@@ -1053,3 +1053,85 @@ reconciliation. These transport tests are distinct from hosted/database acceptan
 A mutation is one HTTP request; bounded read retries follow the shared transport
 policy. Group/player CAS, block/profile projections and Inbox delivery are server
 costs; the SDK does not multiply them through polling or automatic page loops.
+
+## Items: unique instances and explicit inventory actions
+
+```gdscript
+var user_id: String = Horizon.auth.getCurrentUser().userId
+var inventory: Dictionary = await Horizon.items.getInventory(user_id)
+var catalog: Dictionary = await Horizon.items.getCatalog(user_id) # One page, at most50 templates.
+if inventory.success and not inventory.data.instances.is_empty():
+    var selected: Dictionary = inventory.data.instances[0]
+    # In a later explicit Equip confirmation, retain this instance/revision:
+    var equipped: Dictionary = await Horizon.items.setEquipped(
+        user_id, selected.instanceId, inventory.data.revision, true)
+```
+
+The five methods return `{success,data,errorCode,error}`:
+`getInventory(user_id)`, `getCatalog(user_id,after_key="",limit=50,catalog_revision=null)`,
+`adjustProperties(user_id,instance_id,expected_revision,changes)`,
+`setEquipped(user_id,instance_id,expected_revision,equipped)`, and
+`discardItem(user_id,instance_id,expected_revision)`. Adjustment entries use
+`{key,amount}`, at most8 distinct nonzero integer deltas. Every expected revision
+and numeric property is an exact integer within ±9,007,199,254,740,991; revisions
+are nonnegative. Floats, exponent/string coercion and duplicate decoded JSON names
+are rejected. Only catalog-permitted existing numeric properties can change;
+post-change properties remain bounded to256 canonical UTF-8 bytes. Catalog pages
+have `revision,definitions,nextAfterKey,total,limits,serverTime`; inventory has
+`userId,revision,instances,limits,serverTime`. Instances contain
+`instanceId,itemKey,properties,equipped,createdAt`. Current snapshots are copied,
+replace complete state, and retain over-limit historical instances after downgrade.
+
+Each of the three mutations sends exactly once, including429/503/timeout. Keep the
+original instance/revision and explicitly read/reconcile an uncertain outcome.
+Never silently replace a revision or repeat a delta. Catalog pagination is one
+explicit page per call, bound to the supplied catalog revision; no automatic page
+loop or polling. Host/project/session generations, ABA, cache clears, queues and
+synchronous completion callbacks fence late responses. The manager retains only
+one own inventory and one catalog page. `getCurrentInventory()` and
+`getCurrentCatalogPage()` return copies; `clearCache()` preserves same-player
+freshness floors. Signals are `inventory_loaded`, `inventory_updated`,
+`catalog_loaded` and `items_failed(error,code)`. Items creates no realtime topic.
+
+Ordinary property strings remain Godot `String`. Godot itself cannot represent
+U+0000 and would replace it with U+FFFD. Those valid property/name strings instead
+use immutable `HorizonItemStringData`: `getOriginalJson()` gives the original JSON
+string token, `getJson()` gives its exact canonical JSON, and
+`getDisplayPreview()` visibly spells each NUL as `\u0000`. That preview is for
+rendering, never an unchanged write. Other properties/items remain available.
+`HorizonItemModels.canonical(properties)` preserves these lossless values and
+canonical byte limits, including Unicode/slash/control escapes. No invalid native
+NUL decode or silent replacement is used by Item HTTP responses.
+
+Player Values offers add `itemRewards:[{itemKey,quantity}]`; operation receipts add
+`items:[{instanceId,itemKey}]`. Both default to[] for older servers/receipts. A
+purchase retains the same durably saved original `unixMillis:UUID` and unchanged
+offer key across retries. It replaces the complete authoritative Player Values
+state and invalidates the inventory cache without fetching or synthesizing items.
+Explicitly fetch inventory after success. A replay may refer to an already
+discarded item; never buy again or recreate it to repair a missing refresh.
+The server-only GrantProvider owns creation and the atomic balance/inventory/
+receipt transaction; the SDK exposes no grant endpoint. Quantities are distinct
+item keys with total1..4. Countable currency stays in Player Values; cosmetics
+stay in Player Profile, while Items represent individually identified instances.
+
+The executable `examples/features/items_example.gd` supplies UI-called catalog,
+review/purchase, inventory, equip, adjust and explicitly destructive discard.
+It refreshes terms before a NEW purchase and requires another confirmation if
+terms changed. Project+player owns the durable pending slot across regional hosts;
+atomic locks/compare-and-swap guard concurrent samples, interrupted writes and late
+responses. Confirmed purchase recovery persists an inventory-only phase so a failed
+GET or restart never buys again. Expired/uncertain/corrupt intents remain blocked.
+Inventory actions persist their exact original selection before the one send and
+require an explicit fresh snapshot plus acknowledgement after uncertainty. No
+identity signup fallback or background action is introduced. The actual sample is
+executed by the native HTTP and storage/policy tests on Godot-only port20111, with
+inherited engine fixtures kept serial. These local fixtures prove SDK behavior;
+backend transactions and hosted performance require their separate acceptance.
+
+A successful mutation is one HTTP POST; catalog/inventory are one logical GET
+with the existing bounded read retry policy. Purchase uses the existing replay-safe
+Player Values transport, followed by the caller's explicit inventory GET. The SDK
+adds no server queries, grants, polling timers or hidden recovery requests.
+simpleServer supports these REST shapes; its catalog administration uses the local
+CLI. Realtime and validated actions remain hosted-only.

@@ -1,6 +1,7 @@
 ## Server-owned balances. Keep an operation ID stable across every retry of one action.
 class_name HorizonPlayerValues
 extends RefCounted
+signal item_inventory_invalidated()
 
 const ENDPOINT := "/api/v1/app/player-values"
 const MAX_SAFE_INTEGER: int = 9007199254740991
@@ -76,7 +77,18 @@ func getState(user_id: String) -> Dictionary:
 func purchase(user_id: String, offer_key: String, operation_id: String) -> Dictionary:
 	if offer_key.strip_edges().is_empty() or not _validOperationId(operation_id):
 		return _failure("INVALID_REQUEST")
-	return await _stateCall(user_id, "/purchase", {"userId": user_id, "offerKey": offer_key, "operationId": operation_id})
+	if not _begin(user_id): return _failure(lastErrorCode)
+	var starting_identity: String = _identity
+	var starting_epoch: int = _epoch
+	item_inventory_invalidated.emit()
+	_syncIdentity()
+	if starting_identity != _identity or starting_epoch != _epoch: return _failure("STALE_RESPONSE")
+	var result: Dictionary = await _stateCall(user_id, "/purchase", {"userId": user_id, "offerKey": offer_key, "operationId": operation_id})
+	var identity: String = _identity
+	var epoch: int = _epoch
+	item_inventory_invalidated.emit()
+	_syncIdentity()
+	return _failure("STALE_RESPONSE") if identity != _identity or epoch != _epoch else result
 
 func adjust(user_id: String, key: String, amount: Variant, reason: String, operation_id: String) -> Dictionary:
 	if typeof(amount) != TYPE_INT or not _safeNumber(amount) or amount == 0 or key.strip_edges().is_empty() or reason.strip_edges().is_empty() or not _validOperationId(operation_id):
@@ -206,6 +218,9 @@ static func _normalizeState(raw: Variant) -> Dictionary:
 	state.revision = int(state.revision)
 	state.definitionVersion = int(state.definitionVersion)
 	if state.get("operation") is Dictionary:
+		var items: Variant = HorizonItemModels.references(state.operation.get("items", []))
+		if items == null: return {}
+		state.operation.items = items
 		for delta: Variant in state.operation.get("applied", []):
 			if not delta is Dictionary or not _safeNumber(delta.get("amount")):
 				return {}
@@ -224,6 +239,9 @@ static func _normalizeOffers(raw: Variant) -> Dictionary:
 	for offer: Variant in result.offers:
 		if not offer is Dictionary:
 			return {}
+		var rewards: Variant = HorizonItemModels.rewards(offer.get("itemRewards", []))
+		if rewards == null: return {}
+		offer.itemRewards = rewards
 		for field: String in ["costs", "rewards"]:
 			if not offer.get(field) is Array:
 				return {}
@@ -242,7 +260,7 @@ static func _validOperationId(value: String) -> bool:
 	expression.compile("^[0-9]{1,16}:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 	return expression.search(value) != null and int(value.get_slice(":", 0)) > 0
 
-static func _safeJsonIntegers(json: String, fields: Array[String] = ["balance", "earnedToday", "dailyCap", "amount", "revision", "definitionVersion", "purchasesPerDay"]) -> bool:
+static func _safeJsonIntegers(json: String, fields: Array[String] = ["balance", "earnedToday", "dailyCap", "amount", "revision", "definitionVersion", "purchasesPerDay", "quantity"]) -> bool:
 	# Other feature contracts may have opaque versions; existing PV/Gift defaults stay strict.
 	# Tokenize whole JSON strings, so escaped keys are decoded and opaque giftData stays opaque.
 	# Track objects independently to reject duplicate decoded names without confusing array entries.

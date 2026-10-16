@@ -487,6 +487,10 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 		var parsed: Variant = null
 		if trimmed.is_empty():
 			parsed = {}
+		elif endpoint.get_slice("?", 0) in ["/api/v1/app/items", "/api/v1/app/items/catalog", "/api/v1/app/items/adjust", "/api/v1/app/items/equip", "/api/v1/app/items/discard"]:
+			# Item properties may contain NUL, which native JSON silently changes to U+FFFD.
+			# Keep original integer/string values for the feature and request_completed observers.
+			parsed = HorizonItemModels.parse(trimmed)
 		elif trimmed.begins_with("{") or trimmed.begins_with("[") or trimmed.begins_with("\"") or trimmed == "true" or trimmed == "false" or trimmed == "null" or trimmed.is_valid_float():
 			parsed = JSON.parse_string(trimmed)
 			if parsed == null:
