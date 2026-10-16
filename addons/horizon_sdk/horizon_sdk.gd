@@ -189,6 +189,7 @@ func _initializeManagers() -> void:
 	giftCodes = HorizonGiftCodes.new()
 	giftCodes.initialize(_http, _logger, auth)
 	giftCodes.setPlayerProfile(playerProfile)
+	giftCodes.setPlayerValues(playerValues)
 
 	# Feedback
 	feedback = HorizonFeedback.new()

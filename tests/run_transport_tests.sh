@@ -25,8 +25,10 @@ cd "$test_dir"
 "$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/statistics_example.gd
 "$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/player_values_example.gd
 "$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/inbox_example.gd
+"$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/gift_codes_example.gd
 "$GODOT_BIN" --headless --path . --script tests/pending_purchase_test.gd
 "$GODOT_BIN" --headless --path . --script tests/pending_statistics_test.gd
+"$GODOT_BIN" --headless --path . --script tests/pending_gift_code_test.gd
 "$GODOT_BIN" --headless --path . --script tests/auth_identity_policy_test.gd
 
 # Runs one Godot contract script against its mock server.
@@ -65,6 +67,8 @@ run_contract() {
 run_contract tests/mock_cloud_save_server.py tests/cloud_save_transport_test.gd
 run_contract tests/mock_leaderboard_server.py tests/leaderboard_transport_test.gd
 run_contract tests/mock_gift_code_server.py tests/gift_code_transport_test.gd
+run_contract tests/mock_gift_values_server.py tests/gift_values_transport_test.gd
+run_contract tests/mock_signup_once_server.py tests/signup_once_transport_test.gd
 run_contract tests/mock_player_profile_server.py tests/player_profile_transport_test.gd
 run_contract tests/mock_player_values_server.py tests/player_values_transport_test.gd
 run_contract tests/mock_validated_actions_server.py tests/validated_actions_transport_test.gd

@@ -251,17 +251,52 @@ for entry in news:
 
 ### Gift Codes
 
-`redeem` needs a signed-in player and sends the player session (`Authorization: Bearer`). The server only redeems codes for the player who owns that session.
+`redeem(code, idempotency_id = "")` and `redeemParsed(code, idempotency_id = "")`
+require the signed-in player's Bearer session. Configure up to eight Player Values
+rewards separately from arbitrary `giftData`. Returned `grantedValues` are already
+booked on the server; never add those amounts locally. `playerValues` is the full
+current snapshot (or null for legacy/no-value receipts), and `replayed` identifies
+an original receipt. The singleton hands a valid snapshot to `Horizon.playerValues`
+without summing deltas. Legacy backends default to empty grants/null state/false replay.
+Existing signals and `giftData` parsing/cosmetic unlocks remain available.
 
 ```gdscript
-var isValid = await Horizon.giftCodes.validate("ABCD-1234")
-var result = await Horizon.giftCodes.redeem("ABCD-1234")
+# After sign-in. This helper preserves the exact code + UUID before any HTTP request.
+const Pending = preload("res://addons/horizon_sdk/examples/features/pending_gift_code.gd")
+var project: String = Horizon.getConfig().api_key
+var user_id: String = Horizon.auth.getCurrentUser().userId
+var loaded: Dictionary = Pending.load_pending(project, user_id)
+if not loaded.success: return # keep files for reconciliation
+var original: Dictionary = loaded.pending
+if original.is_empty():
+    original = {"userId": user_id, "code": "ABCD-1234", "idempotencyId": HorizonGiftCodes.createRedemptionId()}
+    if not Pending.store(project, original): return
+var result: Dictionary = await Horizon.giftCodes.redeemParsed(original.code, original.idempotencyId)
 if result.get("success", false):
-    var rewards = result.get("giftData", "")
-    # Cosmetics unlocked by the code (`grants`), [] for codes without grants.
-    # The cached player profile is dropped, the next getProfile() shows them.
-    var unlocked: Array = result.get("grantedUnlocks", [])
+    Pending.confirm(project, original)
+    print(result.grantedValues, result.playerValues, result.replayed)
+# Any error/timeout keeps the original file/ID. Recover status/current state before retrying it.
 ```
+
+The runnable `examples/features/gift_codes_example.gd` also restores the existing
+identity and persists a signup/recovery marker; an uncertain signup or failed
+restore never creates another guest. Its storage is bound to project/player,
+independent of regional host, with exact original comparisons and atomic locks.
+Corrupt/interrupted originals stay blocked for reconciliation. No background polling.
+
+The empty default preserves legacy omission of `idempotencyId`; it gets exactly one
+HTTP attempt. Nonempty explicit IDs must be nonblank and at most128 UTF-16 units.
+The transport may retry an explicit ID only with the exact original body, project,
+host and session. A lost response never creates/replaces an ID automatically.
+Signup always gets exactly one transport attempt, even after5xx/timeout, because
+another request could create another server identity. Permanent4xx is not retried.
+Host/project/session transitions use a synchronous monotone generation, including
+A→B→A changes without auth signals. Decoded JSON field names and original number
+tokens are checked before numeric coercion; duplicate decoded keys reject.
+Late responses cannot clear another session's profile or overwrite a newer balance,
+catalogue, server-clock watermark or cache epoch. An unrelated Player Values cache
+clear preserves a successful pure legacy giftData result/callback. Both hosted and simpleServer REST
+use the same additive contract; this adds no cache-refresh HTTP or polling requests.
 
 ### Player Profile
 
