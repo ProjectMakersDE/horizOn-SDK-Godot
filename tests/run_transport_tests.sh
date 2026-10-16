@@ -69,6 +69,7 @@ run_contract tests/mock_leaderboard_server.py tests/leaderboard_transport_test.g
 run_contract tests/mock_gift_code_server.py tests/gift_code_transport_test.gd
 run_contract tests/mock_gift_values_server.py tests/gift_values_transport_test.gd
 run_contract tests/mock_signup_once_server.py tests/signup_once_transport_test.gd
+run_contract tests/mock_rate_limit_server.py tests/rate_limit_transport_test.gd
 run_contract tests/mock_player_profile_server.py tests/player_profile_transport_test.gd
 run_contract tests/mock_player_values_server.py tests/player_values_transport_test.gd
 run_contract tests/mock_validated_actions_server.py tests/validated_actions_transport_test.gd

@@ -54,12 +54,15 @@ var _status: ConnectionStatus = ConnectionStatus.DISCONNECTED
 var _hostPingResults: Dictionary = {}
 var _logger: HorizonLogger
 var _pendingRequests: int = 0
+# Network backoff must not consume the game's deterministic global RNG.
+var _retryRandom: RandomNumberGenerator = RandomNumberGenerator.new()
 
 
 ## Initialize the HTTP client.
 ## @param logger Logger instance for debug output
 func initialize(logger: HorizonLogger) -> void:
 	_logger = logger
+	_retryRandom.randomize()
 	_logger.info("HTTP Client initialized")
 
 
@@ -408,11 +411,9 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 
 		# Handle rate limiting
 		if responseCode == 429:
-			var retryAfter := retryDelaySeconds
-			for header in responseHeaders:
-				if header.to_lower().begins_with("retry-after:"):
-					retryAfter = float(header.split(":")[1].strip_edges())
-					break
+			var retryAfter: float = _retryAfterSeconds(responseHeaders)
+			if not is_finite(retryAfter) or retryAfter <= 0.0:
+				retryAfter = maxf(retryDelaySeconds, 1.0) if is_finite(retryDelaySeconds) else 1.0
 			rate_limited.emit(retryAfter)
 			# A 429 whose body carries a `code` is a feature limit (e.g. RUN_RATE_LIMITED,
 			# RUN_CAPACITY_REACHED), not the transient account request limit (empty body).
@@ -428,8 +429,9 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 				limited.headers = responseHeaders
 				return limited
 			if attemptCount < maxAttempts:
-				_logger.warning("Rate limited. Retrying after %.1f seconds..." % retryAfter)
-				await get_tree().create_timer(retryAfter).timeout
+				var wait_seconds: float = _rateLimitDelay(retryAfter)
+				_logger.warning("Rate limited. Retrying after %.1f seconds including jitter..." % wait_seconds)
+				await get_tree().create_timer(wait_seconds).timeout
 				continue
 			# Still rate limited after the last attempt: fail with a clear message and keep the 429 status.
 			var rateLimitMsg := _rateLimitMessage(retryAfter)
@@ -638,6 +640,12 @@ func _parseServerErrorCode(bodyText: String) -> String:
 		if code is String:
 			return code
 	return ""
+
+
+## One existing retry timer; never retry before the server's delay. No global game RNG use.
+func _rateLimitDelay(retry_after: float) -> float:
+	var base: float = retry_after if is_finite(retry_after) and retry_after > 0.0 else (maxf(retryDelaySeconds, 1.0) if is_finite(retryDelaySeconds) else 1.0)
+	return base + base * _retryRandom.randf_range(0.0, 0.2)
 
 
 ## Read the Retry-After header in seconds (0.0 if missing or not numeric).
