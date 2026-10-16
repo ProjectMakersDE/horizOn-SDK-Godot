@@ -27,6 +27,7 @@ cd "$test_dir"
 "$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/inbox_example.gd
 "$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/gift_codes_example.gd
 "$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/achievements_example.gd
+"$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/friends_example.gd
 "$GODOT_BIN" --headless --path . --script tests/pending_purchase_test.gd
 "$GODOT_BIN" --headless --path . --script tests/pending_statistics_test.gd
 "$GODOT_BIN" --headless --path . --script tests/pending_gift_code_test.gd
@@ -80,9 +81,11 @@ run_contract tests/mock_auth_server.py tests/auth_transport_test.gd
 run_contract tests/mock_statistics_server.py tests/statistics_transport_test.gd
 run_contract tests/mock_inbox_server.py tests/inbox_transport_test.gd
 run_contract tests/mock_achievements_server.py tests/achievements_transport_test.gd
+run_contract tests/mock_friends_server.py tests/friends_transport_test.gd
 
 "$GODOT_BIN" --headless --path . --script tests/inbox_policy_test.gd
 "$GODOT_BIN" --headless --path . --script tests/achievements_policy_test.gd
+"$GODOT_BIN" --headless --path . --script tests/friends_policy_test.gd
 
 "$GODOT_BIN" --headless --path . --script tests/realtime_policy_test.gd
 if [ -n "${HORIZON_REALTIME_FIXTURE_URL:-}" ]; then

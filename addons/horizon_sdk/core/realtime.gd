@@ -80,7 +80,7 @@ static func canPoll(topic: String) -> bool:
 
 static func _validTopic(topic: String) -> bool:
 	var pattern := RegEx.new()
-	pattern.compile("^(inbox|matches|chat):[A-Za-z0-9._-]{1,96}$")
+	pattern.compile("^(inbox|matches|chat|friends):[A-Za-z0-9._-]{1,96}$")
 	return pattern.search(topic) != null
 
 func _process(_delta: float) -> void:

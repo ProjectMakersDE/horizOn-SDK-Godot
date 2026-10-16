@@ -271,6 +271,11 @@ func postAsync(endpoint: String, data: Dictionary = {}, useSessionToken: bool = 
 	return await _sendRequest(endpoint, HTTPClient.METHOD_POST, data, useSessionToken, extraHeaders)
 
 
+## One transport attempt for a command without a durable idempotency receipt.
+func postOnceAsync(endpoint: String, data: Dictionary = {}, useSessionToken: bool = false, extraHeaders: PackedStringArray = PackedStringArray()) -> HorizonNetworkResponse:
+	return await _sendRequest(endpoint, HTTPClient.METHOD_POST, data, useSessionToken, extraHeaders, false)
+
+
 ## Make a PUT request with JSON body.
 ## Same headers, retries and error handling as postAsync.
 ## @param endpoint The API endpoint
@@ -329,7 +334,7 @@ func _methodName(method: int) -> String:
 
 
 ## Internal request handler with retry logic.
-func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionToken: bool, extraHeaders: PackedStringArray = PackedStringArray()) -> HorizonNetworkResponse:
+func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionToken: bool, extraHeaders: PackedStringArray = PackedStringArray(), allowRetry: bool = true) -> HorizonNetworkResponse:
 	if activeHost.is_empty():
 		return HorizonNetworkResponse.failure(
 			"No active host. Call connect() first.",
@@ -351,7 +356,7 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 	if not data.is_empty() or method == HTTPClient.METHOD_POST or method == HTTPClient.METHOD_PUT:
 		bodyJson = _toJsonExcludeEmpty(data)
 	var attemptCount := 0
-	var maxAttempts := maxRetryAttempts + 1
+	var maxAttempts := maxRetryAttempts + 1 if allowRetry else 1
 	# Signup creates a fresh server identity; legacy redemption has no deduplication ID.
 	# An uncertain outcome must never trigger a second effect within the transport.
 	var route: String = endpoint.get_slice("?", 0)
