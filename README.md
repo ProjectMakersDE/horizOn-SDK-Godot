@@ -876,3 +876,8 @@ pending entry blocks a new claim; corrupt/interrupted storage stays blocked for
 explicit recovery. A regional host change retains the original slot. Only a
 successful authoritative claim confirms and removes its exact stored intent.
 This sample protection adds no server reads, polling or reward calculation.
+
+Explicit gift-redemption IDs use the server's Unicode whitespace definition for
+local blank validation (including NBSP, figure space and narrow NBSP). Nonblank IDs
+remain unchanged. This does not change the existing one-attempt legacy transport;
+the current server rejects an explicit blank ID rather than generating a legacy ID.

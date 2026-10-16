@@ -102,7 +102,12 @@ func _run() -> void:
 		http.sessionToken = "fixture-session-1007")
 	result = await gifts.redeem("BACKOFFABA",_id(23))
 	if not _check(not result.success and result.errorCode == "STALE_RESPONSE","Backoff rejects credential ABA without another HTTP attempt"): return
-	for bad: String in [" ","x".repeat(129),"😀".repeat(65)]:
+	var invalid_ids: Array[String] = [" ", "x".repeat(129), "😀".repeat(65), " \t\u00a0\u2007\u202f"]
+	var blank_codes: Array[int] = [0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x00a0, 0x1680, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000]
+	for code: int in range(0x2000, 0x200b): blank_codes.append(code)
+	for code: int in blank_codes: invalid_ids.append(String.chr(code))
+	if not _check(not HorizonGiftCodes._isBlankId("\u200b") and not HorizonGiftCodes._isBlankId("\u0085") and not HorizonGiftCodes._isBlankId("\u00a0original\u00a0"), "Only the server's exact whitespace set is blank; nonblank caller IDs are never trimmed"): return
+	for bad: String in invalid_ids:
 		result = await gifts.redeem("LOCAL",bad)
 		if not _check(not result.success and result.errorCode == "INVALID_REQUEST","Invalid explicit ID must fail before HTTP"): return
 	if not _check(events.redeemed == 9,"Rejected/stale responses never emit a success callback"): return
