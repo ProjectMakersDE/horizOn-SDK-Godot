@@ -92,7 +92,7 @@ func redeem(code: String, idempotency_id: String = "") -> Dictionary:
 	if not _auth.isSignedIn() or _http.sessionToken.is_empty() or _auth.getCurrentUser().accessToken != _http.sessionToken:
 		code_redeem_failed.emit(code, "User must be signed in")
 		return {}
-	if not idempotency_id.is_empty() and (idempotency_id.strip_edges().is_empty() or idempotency_id.to_utf16_buffer().size() > 256):
+	if not idempotency_id.is_empty() and (_isBlankId(idempotency_id) or idempotency_id.to_utf16_buffer().size() > 256):
 		return _failure(code, "INVALID_REQUEST", "Keep one nonblank original ID of at most128 UTF-16 units")
 	var scope: Dictionary = _scope()
 	var epoch: int = _epoch
@@ -166,6 +166,16 @@ func _failure(code: String, error_code: String, message: String) -> Dictionary:
 	code_redeem_failed.emit(code, message)
 	return {"success": false, "message": message, "giftData": "", "grantedUnlocks": [],
 		"grantedValues": [], "playerValues": null, "replayed": false, "errorCode": error_code}
+
+## Match Kotlin Char.isWhitespace (Java whitespace or space characters), not locale trimming.
+## Godot strip_edges() omits NBSP and other Unicode spaces. Never rewrite the caller's ID.
+static func _isBlankId(value: String) -> bool:
+	for index: int in range(value.length()):
+		var code: int = value.unicode_at(index)
+		if (code >= 0x09 and code <= 0x0d) or (code >= 0x1c and code <= 0x20) or code == 0x00a0 or code == 0x1680 or (code >= 0x2000 and code <= 0x200a) or code == 0x2028 or code == 0x2029 or code == 0x202f or code == 0x205f or code == 0x3000:
+			continue
+		return false
+	return true
 
 static func _parseGrantedValues(raw: Variant) -> Variant:
 	if not raw is Array or raw.size() > 8: return null
