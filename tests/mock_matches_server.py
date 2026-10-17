@@ -5,14 +5,14 @@ from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from mock_http import report_rejection,send_json
 U='00000000-0000-4000-8000-000000001013';V='00000000-0000-4000-8000-00000000a013';W='00000000-0000-4000-8000-000000003013'
 I='00000000-0000-4000-8000-000000004013';J='00000000-0000-4000-8000-000000004014';K='00000000-0000-4000-8000-000000004015';L='00000000-0000-4000-8000-000000004016';RUN='00000000-0000-4000-8000-000000005013'
-T='2026-10-16T12:00:00Z';R=4294967296;BASE='/api/v1/app/matches';CAP={'activeMatches':2,'stateBytes':1024,'retainedMatches':20,'pendingInvites':20}
+T='2026-10-16T12:00:00Z';R=4294967296;BASE='/api/v1/app/matches';CAP={'activeMatches':2,'stateBytes':1024,'retainedMatches':20,'pendingInvites':20,'settlementMatches':20,'historyRetentionSeconds':604800,'rankedSettlementSeconds':604800}
 def b(data):return base64.b64encode(bytes(data)).decode()
 B=b([0,255,0,128]);B1=b([1,0,255]);B2=b([2,128,0]);B3=b([3,0,255]);RESULT=b([255,0,128])
 OPTIONS={'name':'opaque é/😀','capacity':2,'visibility':'private','strength':-9007199254740991,'turnSeconds':60,'timeoutPolicy':'skip','ranked':True,'dataBase64':B,'inviteeIds':[V]}
 def view(id=I,revision=1):return {'id':id,'name':'opaque é/😀','revision':revision,'creatorId':U,'capacity':2,'visibility':'private','strength':-9007199254740991,'status':'lobby','participantIds':[U],'invitedIds':[V],'forfeitedIds':[],'currentPlayerId':None,'turnDeadline':None,'createdAt':T,'startedAt':None,'finishedAt':None,'purgeAt':None,'finalStateRevision':None,'hasDisagreement':False,'ranked':True,'timeoutDue':False,'turnOrder':[],'turnSeconds':60,'timeoutPolicy':'skip','dataBase64':B,'reports':[],'reportDeadline':None,'absoluteDeadline':None,'rankedLeaderboardKey':'ranked','ownRankedRunId':None,'notificationPending':False}
 def summary(row):return {k:v for k,v in row.items() if k not in ['turnOrder','turnSeconds','timeoutPolicy','dataBase64','reports','reportDeadline','absoluteDeadline','rankedLeaderboardKey','ownRankedRunId','notificationPending']}
 def point(row,**kw):return dict({'match':copy.deepcopy(row),'pollAfterSeconds':120,'serverTime':T},**kw)
-def mine(user,revision,active=[],recent=[]):return {'userId':user,'revision':revision,'active':[summary(x)for x in active],'invites':[],'recent':[summary(x)for x in recent],'limits':CAP,'pollAfterSeconds':120,'serverTime':T}
+def mine(user,revision,active=[],recent=[]):return {'userId':user,'revision':revision,'active':[summary(x)for x in active],'invites':[],'pendingResults':[],'recent':[summary(x)for x in recent],'limits':CAP,'pollAfterSeconds':120,'serverTime':T}
 def run():return {'runId':RUN,'ticket':'match-original-ticket','seed':42,'leaderboardKey':'ranked','issuedAt':T,'expiresAt':'2026-10-16T12:30:00Z','expiresInSeconds':1800}
 CASES=[]
 def add(method,path,user,body,result,status=200,revision=None,delay=0):CASES.append((method,path,user,copy.deepcopy(body),copy.deepcopy(result),status,revision,delay))

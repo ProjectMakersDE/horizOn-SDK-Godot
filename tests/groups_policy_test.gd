@@ -102,7 +102,7 @@ func _run() -> void:
 	assert((await groups.invitePlayer(USER, GROUP, 1, USER)).errorCode == "INVALID_GROUP_ACTION")
 	assert((await groups.setMemberRole(USER, GROUP, 1, PEER, "leader")).errorCode == "INVALID_GROUP_ACTION")
 	assert((await groups.getMembers(USER, GROUP, "", 50.0)).errorCode == "INVALID_PAGE")
-	for metadata: Dictionary in [{"name": " ", "data": {}}, {"name": "x", "data": {"x": INF}}, {"name": "x", "data": {"x": "a".repeat(2041)}}, {"name": "é".repeat(61), "data": {}}]:
+	for metadata: Dictionary in [{"name": " ", "data": {}}, {"name": "x", "data": {"x": INF}}]:
 		assert((await groups.createGroup(USER, 0, metadata.name, "", "open", metadata.data)).errorCode == "INVALID_GROUP")
 	assert(http.calls.size() == count, "Invalid intent never reaches HTTP")
 	# Response lexemes outside arbitrary data must be exact safe integers; duplicate decoded keys fail.
@@ -198,7 +198,7 @@ func _run() -> void:
 func _group(revision: int) -> Dictionary:
 	return {"id": GROUP, "revision": revision, "name": "Guild", "description": "", "joinMode": "open", "leaderId": USER, "memberCount": 1, "myRole": "leader", "data": {"revision": 1.5, "$key": {"": {}, "a.b": []}}, "createdAt": _time(1), "updatedAt": _time(1)}
 func _snapshot(revision: int, second: int) -> Dictionary:
-	return {"userId": USER, "revision": revision, "groups": [_group(revision)], "incomingInvites": [], "outgoingRequests": [], "limits": {"maxMembers": 20, "maxGroupsPerPlayer": 1, "maxInvitations": 20, "maxJoinRequests": 20, "maxDataBytes": 2048, "memberPageSize": 50}, "serverTime": _time(second)}
+	return {"userId": USER, "revision": revision, "groups": [_group(revision)], "incomingInvites": [], "outgoingRequests": [], "limits": {"maxMembers": 20, "maxGroupsPerPlayer": 1, "maxInvitations": 20, "maxJoinRequests": 20, "maxDataBytes": 2048, "memberPageSize": 50, "maxPlayerInvitations": 2, "maxPlayerRequests": 2, "maxNameBytes": 120, "maxDescriptionBytes": 1024, "maxDataDepth": 16}, "serverTime": _time(second)}
 func _time(second: int) -> String: return "2026-10-16T12:00:%02dZ" % second
 func _load(groups: HorizonGroups, result: Dictionary) -> void: result.result = await groups.getGroups(USER)
 func _create(groups: HorizonGroups, data: Dictionary, result: Dictionary) -> void: result.result = await groups.createGroup(USER, 0, "Guild", "", "open", data)

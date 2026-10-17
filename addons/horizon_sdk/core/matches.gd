@@ -205,6 +205,9 @@ func _versionEntries(data: Dictionary) -> Dictionary:
 	return versions
 func _fresh(kind: String, _id: String, data: Dictionary, resource: String, run_binding: String) -> bool:
 	if kind == "ranked-run": return not _runIds.has(run_binding) or _runIds[run_binding] == data.runId
+	for source: Dictionary in data.get("pendingResults", []):
+		var binding: String = source.matchId + ":" + str(source.finalStateRevision)
+		if source.ownRankedRunId != null and _runIds.has(binding) and _runIds[binding] != source.ownRankedRunId: return false
 	if data.has("match"): resource = "match:" + data.match.id
 	if HorizonPlayerValues._timeMillis(data.serverTime) < _times.get(resource, -1): return false
 	var versions: Dictionary = _versionEntries(data)
@@ -218,6 +221,8 @@ func _record(kind: String, _id: String, data: Dictionary, resource: String, run_
 		_times[resource] = HorizonPlayerValues._timeMillis(data.serverTime)
 		_versions.merge(_versionEntries(data), true)
 		if data.has("match") and data.match.ownRankedRunId != null and data.match.finalStateRevision != null: _runIds[data.match.id + ":" + str(data.match.finalStateRevision)] = data.match.ownRankedRunId
+		for source: Dictionary in data.get("pendingResults", []):
+			if source.ownRankedRunId != null: _runIds[source.matchId + ":" + str(source.finalStateRevision)] = source.ownRankedRunId
 	_trim(_times, 512)
 	_trim(_versions, 512)
 	_trim(_runIds, 128)

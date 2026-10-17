@@ -42,7 +42,7 @@ func getGroup(user_id: String, group_id: String) -> Dictionary:
 	return await _call(user_id, "group", group_id)
 
 func getMembers(user_id: String, group_id: String, after_user_id: String = "", limit: Variant = 50) -> Dictionary:
-	if (not after_user_id.is_empty() and not _validUuid(after_user_id)) or typeof(limit) != TYPE_INT or limit < 1 or limit > 50: return _fail("INVALID_PAGE")
+	if (not after_user_id.is_empty() and not _validUuid(after_user_id)) or typeof(limit) != TYPE_INT or limit < 1 or limit >= 2147483647: return _fail("INVALID_PAGE")
 	return await _call(user_id, "members", group_id, {"afterUserId": after_user_id, "limit": limit})
 
 func getPending(user_id: String, group_id: String) -> Dictionary:
@@ -205,11 +205,10 @@ func _mine(raw: Variant, user: String) -> Dictionary:
 	if not raw is Dictionary or raw.get("userId") != user or not _nonnegative(raw.get("revision")) or not _stamp(raw.get("serverTime")) or not raw.get("limits") is Dictionary: return {}
 	if raw.revision < _revision: return _stale()
 	var limits: Dictionary = {}
-	for field: String in ["maxMembers", "maxGroupsPerPlayer", "maxInvitations", "maxJoinRequests", "maxDataBytes", "memberPageSize"]:
-		if not _nonnegative(raw.limits.get(field)): return {}
+	for field: String in ["maxMembers", "maxGroupsPerPlayer", "maxInvitations", "maxJoinRequests", "maxDataBytes", "memberPageSize", "maxPlayerInvitations", "maxPlayerRequests", "maxNameBytes", "maxDescriptionBytes", "maxDataDepth"]:
+		if not _nonnegative(raw.limits.get(field)) or raw.limits[field] < 1 or raw.limits[field] > 2147483647: return {}
 		limits[field] = int(raw.limits[field])
-	if limits.maxMembers < 1 or limits.maxMembers > 500 or limits.maxGroupsPerPlayer < 1 or limits.maxGroupsPerPlayer > 5 or limits.maxInvitations != 20 or limits.maxJoinRequests != 20 or limits.maxDataBytes != 2048 or limits.memberPageSize != 50: return {}
-	if not raw.get("groups") is Array or raw.groups.size() > 5: return {}
+	if not raw.get("groups") is Array: return {}
 	var result: Dictionary = {"userId": user, "revision": int(raw.revision), "limits": limits, "groups": [], "serverTime": raw.serverTime}
 	var seen: Dictionary = {}
 	for entry: Variant in raw.groups:
@@ -219,20 +218,20 @@ func _mine(raw: Variant, user: String) -> Dictionary:
 		result.groups.append(group)
 	for field: String in ["incomingInvites", "outgoingRequests"]:
 		var rows: Variant = raw.get(field)
-		if not rows is Array or rows.size() > 20: return {}
+		if not rows is Array: return {}
 		result[field] = []
 		for row: Variant in rows:
-			if not row is Dictionary or not _validUuid(row.get("groupId")) or not _validUuid(row.get("requestId")) or not _validUuid(row.get("issuerId")) or not _time(row.get("createdAt")) or seen.has(row.groupId.to_lower()) or not row.has("group"): return {}
+			if not row is Dictionary or not _validUuid(row.get("groupId")) or not _validUuid(row.get("requestId")) or not _validUuid(row.get("issuerId")) or (row.get("createdAt") != null and not _time(row.createdAt)) or seen.has(row.groupId.to_lower()) or not row.has("group"): return {}
 			seen[row.groupId.to_lower()] = true
 			var public: Variant = row.group
 			if public != null:
 				public = _group(public, user, row.groupId, false)
 				if public.is_empty(): return {}
-			result[field].append({"groupId": row.groupId, "requestId": row.requestId, "issuerId": row.issuerId, "createdAt": row.createdAt, "group": public})
+			result[field].append({"groupId": row.groupId, "requestId": row.requestId, "issuerId": row.issuerId, "createdAt": row.get("createdAt"), "group": public})
 	return result
 
 func _group(raw: Variant, user: String, expected: String = "", private_allowed: bool = true) -> Dictionary:
-	if not raw is Dictionary or not _validUuid(raw.get("id")) or (not expected.is_empty() and raw.id.to_lower() != expected.to_lower()) or not _nonnegative(raw.get("revision")) or not _nonnegative(raw.get("memberCount")) or raw.memberCount < 1 or raw.memberCount > 500 or not _validUuid(raw.get("leaderId")) or not _time(raw.get("createdAt")) or not _time(raw.get("updatedAt")): return {}
+	if not raw is Dictionary or not _validUuid(raw.get("id")) or (not expected.is_empty() and raw.id.to_lower() != expected.to_lower()) or not _nonnegative(raw.get("revision")) or not _nonnegative(raw.get("memberCount")) or raw.memberCount < 1 or raw.memberCount > 2147483647 or not _validUuid(raw.get("leaderId")) or not _time(raw.get("createdAt")) or not _time(raw.get("updatedAt")): return {}
 	if not _metadata(raw.get("name"), raw.get("description"), raw.get("joinMode"), {}): return {}
 	var key: String = raw.id.to_lower()
 	if raw.revision < _staged.get(key, -1): return _stale()
@@ -269,12 +268,12 @@ func _pending(raw: Dictionary, group_id: String) -> Dictionary:
 	var seen: Dictionary = {}
 	for field: String in ["invitations", "joinRequests"]:
 		var rows: Variant = raw.get(field)
-		if not rows is Array or rows.size() > 20: return {}
+		if not rows is Array: return {}
 		result[field] = []
 		for row: Variant in rows:
-			if not row is Dictionary or not _validUuid(row.get("userId")) or not _validUuid(row.get("requestId")) or not _validUuid(row.get("issuerId")) or not _time(row.get("createdAt")) or seen.has(row.userId.to_lower()): return {}
+			if not row is Dictionary or not _validUuid(row.get("userId")) or not _validUuid(row.get("requestId")) or not _validUuid(row.get("issuerId")) or (row.get("createdAt") != null and not _time(row.createdAt)) or seen.has(row.userId.to_lower()): return {}
 			seen[row.userId.to_lower()] = true
-			result[field].append({"userId": row.userId, "requestId": row.requestId, "issuerId": row.issuerId, "createdAt": row.createdAt})
+			result[field].append({"userId": row.userId, "requestId": row.requestId, "issuerId": row.issuerId, "createdAt": row.get("createdAt")})
 	return result
 
 func _pageHeader(raw: Dictionary, group_id: String) -> bool:
@@ -303,7 +302,7 @@ func _display(raw: Variant) -> Dictionary:
 	return {"name": raw.get("name"), "profile": profile}
 
 func _metadata(name: Variant, description: Variant, mode: Variant, data: Variant) -> bool:
-	if not name is String or _nonblank.search(name) == null or name.to_utf8_buffer().size() > 120 or not description is String or description.to_utf8_buffer().size() > 1024 or mode not in ["open", "request", "invite"]: return false
+	if not name is String or _nonblank.search(name) == null or not description is String or mode not in ["open", "request", "invite"]: return false
 	if data is HorizonGroupJsonData: return data.isValid()
 	return data is Dictionary and HorizonGroupJsonData.fromDictionary(data) != null
 

@@ -7,7 +7,9 @@ const INT32_MAX := 2147483647
 const TEMPLATE_SLOT_CAPACITY := 65536
 static var _key: RegEx = RegEx.create_from_string("^[a-z][a-z0-9_]{0,63}\\z")
 static var _uuid: RegEx = RegEx.create_from_string("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\z")
-static var _tokens: RegEx = RegEx.create_from_string('"(?:[^"\\\\]|\\\\.)*"|[{}\\[\\]:,]|true|false|null|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?')
+# Consume ordinary string runs as one possessive chunk: a legal large opaque
+# state must not exhaust PCRE's per-character backtracking/match budget.
+static var _tokens: RegEx = RegEx.create_from_string('"(?:[^"\\\\]++|\\\\.)*+"|[{}\\[\\]:,]|true|false|null|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?')
 static var _integer: RegEx = RegEx.create_from_string("^-?(0|[1-9][0-9]*)\\z")
 static var _hex: RegEx = RegEx.create_from_string("^[0-9a-fA-F]{4}\\z")
 
@@ -19,6 +21,11 @@ static func time(value: Variant) -> bool: return value is String and HorizonPlay
 ## All numeric fields in Items are integers. Parse before native JSON can round or coerce them.
 static func parse(json: String, max_bytes: int = 1048576) -> Dictionary:
 	if max_bytes < 1 or max_bytes > 2097152 or json.to_utf8_buffer().size() > max_bytes: return {}
+	return parseTransport(json)
+
+## Lossless grammar without importing an unrelated feature's response-byte frame.
+## Callers still enforce their own field/encoding contracts; HTTP owns the received body.
+static func parseTransport(json: String) -> Dictionary:
 	var tokens: Array[RegExMatch] = _tokens.search_all(json)
 	var end: int = 0
 	for token: RegExMatch in tokens:

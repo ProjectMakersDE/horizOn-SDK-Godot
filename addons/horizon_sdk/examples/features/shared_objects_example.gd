@@ -171,7 +171,6 @@ func inspect_pending(cursor: String = "") -> Dictionary:
 	if final_usage.data.revision != usage.data.revision: return _fail("RECONCILIATION_CHANGED")
 	var rows: Array = [] if cursor.is_empty() else _recovery.objects.duplicate(true)
 	rows.append_array(page.data.objects)
-	if rows.size() > 100: return _fail("INVALID_RESPONSE")
 	_recovery = {"intent": intent.duplicate(true), "context": context, "usage": final_usage.data.duplicate(true), "objects": rows, "nextCursor": page.data.nextCursor, "complete": page.data.nextCursor == null}
 	return {"success": true, "data": _recovery_view(), "errorCode": "", "error": ""}
 ## Call only after rendering the complete recovered owner state and an explicit player decision.

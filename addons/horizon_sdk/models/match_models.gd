@@ -2,24 +2,24 @@ class_name HorizonMatchModels
 extends RefCounted
 ## Exact JSON integers, explicit nulls and opaque state. No game-state interpretation.
 const MAX := 9007199254740991
-const STATE_BYTES := 8192
+const STATE_BYTES := 14648 * 1024 # BSON/Jackson string envelope; not the current MATCH_STATE_KIB quota.
 const RESULT_BYTES := 256
 const STATUSES := ["lobby", "active", "reporting", "confirmed", "disputed", "unconfirmed", "cancelled"]
 const TERMINAL := ["confirmed", "disputed", "unconfirmed", "cancelled"]
 const ACTIONS := ["join", "decline", "start", "turn", "timeout", "leave", "cancel"]
 const SUMMARY := ["id", "name", "revision", "creatorId", "capacity", "visibility", "strength", "status", "participantIds", "invitedIds", "forfeitedIds", "currentPlayerId", "turnDeadline", "createdAt", "startedAt", "finishedAt", "purgeAt", "finalStateRevision", "hasDisagreement", "ranked", "timeoutDue"]
 const VIEW := ["turnOrder", "turnSeconds", "timeoutPolicy", "dataBase64", "reports", "reportDeadline", "absoluteDeadline", "rankedLeaderboardKey", "ownRankedRunId", "notificationPending"]
-static var _base64: RegEx = RegEx.create_from_string("^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?\\z")
+static var _base64: RegEx = RegEx.create_from_string("^[A-Za-z0-9+/]*+={0,2}\\z")
 static var _hash: RegEx = RegEx.create_from_string("^[a-f0-9]{64}\\z")
 static var _signed: RegEx = RegEx.create_from_string("^-?(0|[1-9][0-9]*)\\z")
 static func integer(value: Variant, minimum: int = 0) -> bool: return HorizonItemModels.integer(value, minimum)
 static func uuid(value: Variant) -> bool: return HorizonItemModels.uuid(value)
 static func time(value: Variant) -> bool: return HorizonItemModels.time(value)
-static func parse(raw: String) -> Dictionary: return HorizonItemModels.parse(raw, 524288)
+static func parse(raw: String) -> Dictionary: return HorizonItemModels.parseTransport(raw)
 static func encode(value: Variant) -> String: return HorizonSharedObjectModels.encode(value)
 static func encodeBytes(bytes: PackedByteArray) -> String: return "" if bytes.is_empty() else Marshalls.raw_to_base64(bytes)
 static func decodeBytes(value: Variant, maximum: int = STATE_BYTES) -> Variant:
-	if not value is String or value.length() > int((maximum + 2) / 3) * 4 or _base64.search(value) == null: return null
+	if not value is String or value.length() % 4 != 0 or value.length() > int((maximum + 2) / 3) * 4 or _base64.search(value) == null: return null
 	var bytes: PackedByteArray = PackedByteArray() if value.is_empty() else Marshalls.base64_to_raw(value)
 	return bytes if bytes.size() <= maximum and encodeBytes(bytes) == value else null
 static func text(value: Variant, maximum: int, nonblank: bool = false) -> bool:
@@ -43,11 +43,11 @@ static func ids(value: Variant, maximum: int = 8) -> bool:
 		seen[id.to_lower()] = true
 	return true
 static func limits(value: Variant) -> bool:
-	if not fields(value, ["activeMatches", "stateBytes", "retainedMatches", "pendingInvites"]): return false
-	for key: String in value:
-		if key not in ["activeMatches", "stateBytes", "retainedMatches", "pendingInvites"]: continue
-		if not integer(value[key], 1): return false
-	return value.activeMatches <= 10 and value.stateBytes <= STATE_BYTES and value.retainedMatches <= 100 and value.pendingInvites <= 20
+	var names: Array[String] = ["activeMatches", "stateBytes", "retainedMatches", "pendingInvites", "settlementMatches", "historyRetentionSeconds", "rankedSettlementSeconds"]
+	if not fields(value, names): return false
+	for key: String in names:
+		if not integer(value[key], 0 if key in ["retainedMatches", "historyRetentionSeconds"] else 1) or value[key] > 2147483647: return false
+	return value.stateBytes <= STATE_BYTES
 static func createOptions(value: Variant) -> bool:
 	if not fields(value, ["name", "capacity", "visibility", "strength", "turnSeconds", "timeoutPolicy", "ranked", "dataBase64", "inviteeIds"], true): return false
 	return text(value.name, 120, true) and integer(value.capacity, 2) and value.capacity <= 8 and value.visibility in ["open", "private"] and integer(value.strength, -MAX) and integer(value.turnSeconds, 60) and value.turnSeconds <= 604800 and value.timeoutPolicy in ["skip", "forfeit"] and value.ranked is bool and decodeBytes(value.dataBase64) is PackedByteArray and ids(value.inviteeIds, 7) and value.inviteeIds.size() < value.capacity
@@ -142,8 +142,7 @@ static func response(raw: Dictionary, kind: String, user: String, id: String = "
 		result.merge({"userId": user, "revision": raw.revision, "limits": raw.limits.duplicate(true)})
 		var seen: Dictionary = {}
 		for key: String in ["active", "invites", "recent"]:
-			if not raw.get(key) is Array or raw[key].size() > (20 if key == "invites" else 100): return {}
-			if key == "active" and raw[key].size() > 10: return {}
+			if not raw.get(key) is Array: return {}
 			var rows: Array = []
 			for row: Variant in raw[key]:
 				var parsed: Dictionary = summary(row)
@@ -157,7 +156,14 @@ static func response(raw: Dictionary, kind: String, user: String, id: String = "
 				seen[parsed.id] = true
 				rows.append(parsed)
 			result[key] = rows
-		if result.active.size() + result.recent.size() > 100: return {}
+		if not raw.get("pendingResults") is Array: return {}
+		var pending: Array = []
+		var pending_ids: Dictionary = {}
+		for row: Variant in raw.pendingResults:
+			if not fields(row, ["matchId", "finalStateRevision", "ownRankedRunId", "expiresAt"]) or not uuid(row.matchId) or not integer(row.finalStateRevision, 1) or (row.ownRankedRunId != null and not uuid(row.ownRankedRunId)) or not time(row.expiresAt) or pending_ids.has(row.matchId.to_lower()): return {}
+			pending_ids[row.matchId.to_lower()] = true
+			pending.append({"matchId": row.matchId, "finalStateRevision": row.finalStateRevision, "ownRankedRunId": row.ownRankedRunId, "expiresAt": row.expiresAt})
+		result.pendingResults = pending
 		return result
 	if kind == "open":
 		if not raw.get("matches") is Array or raw.matches.size() > options.limit or not raw.has("nextCursor"): return {}

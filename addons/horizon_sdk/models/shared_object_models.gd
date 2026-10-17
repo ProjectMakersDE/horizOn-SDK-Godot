@@ -2,7 +2,7 @@ class_name HorizonSharedObjectModels
 extends RefCounted
 ## Opaque bytes and exact typed metadata. The existing strict parser preserves integer lexemes/NUL.
 const MAX := 9007199254740991
-const MAX_OBJECT := 65536
+const MAX_OBJECT := 1048576 # Existing decoded query-payload frame, independent of tier defaults.
 const MAX_PAGE := 1048576
 static var _base64: RegEx = RegEx.create_from_string("^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?\\z")
 static func integer(value: Variant, minimum: int = 0) -> bool: return HorizonItemModels.integer(value, minimum)
@@ -27,7 +27,7 @@ static func encode(value: Variant) -> String:
 		return "[" + ",".join(parts) + "]"
 	return HorizonItemModels.canonical(value)
 static func limits(value: Variant) -> bool:
-	return value is Dictionary and integer(value.get("collections"), 1) and value.collections <= 100 and integer(value.get("storageBytes"), 1) and value.storageBytes <= 2147483648 and integer(value.get("objectBytes"), 1) and value.objectBytes <= MAX_OBJECT
+	return value is Dictionary and integer(value.get("collections"), 1) and value.collections <= 2147483647 and integer(value.get("storageBytes"), 1) and integer(value.get("objectBytes"), 1) and value.objectBytes <= MAX_OBJECT
 static func search(value: Variant) -> bool:
 	if not value is Dictionary or value.size() > 3: return false
 	for field: Variant in value:
@@ -37,7 +37,7 @@ static func position(value: Variant) -> bool:
 	return value == null or (value is Dictionary and value.size() == 2 and integer(value.get("x"), -MAX) and integer(value.get("y"), -MAX))
 static func definition(value: Variant) -> bool:
 	if not value is Dictionary or not key(value.get("key")) or not text(value.get("name"), 120) or not value.get("active") is bool or not value.get("used") is bool or not value.get("positionEnabled") is bool or not integer(value.get("revision"), 1): return false
-	if value.get("readPolicy") not in ["owner", "friends", "group", "all", "dashboard"] or value.get("writePolicy") not in ["owner", "group", "dashboard"] or not integer(value.get("maxObjectBytes"), 1) or value.maxObjectBytes > MAX_OBJECT or not integer(value.get("maxObjectsPerOwner"), 1) or value.maxObjectsPerOwner > 100 or not value.has("ttlSeconds"): return false
+	if value.get("readPolicy") not in ["owner", "friends", "group", "all", "dashboard"] or value.get("writePolicy") not in ["owner", "group", "dashboard"] or not integer(value.get("maxObjectBytes"), 1) or value.maxObjectBytes > MAX_OBJECT or not integer(value.get("maxObjectsPerOwner"), 1) or value.maxObjectsPerOwner > 2147483647 or not value.has("ttlSeconds"): return false
 	if value.ttlSeconds != null and (not integer(value.ttlSeconds, 60) or value.ttlSeconds > 2592000): return false
 	var fields: Variant = value.get("searchFields")
 	if not fields is Array or fields.size() > 3: return false
@@ -47,10 +47,10 @@ static func definition(value: Variant) -> bool:
 		seen[field.key] = true
 	return true
 static func usage(value: Variant, collection: String, owner: String = "") -> bool:
-	return value is Dictionary and uuid(value.get("userId")) and (owner.is_empty() or value.userId == owner) and value.get("collection") == collection and integer(value.get("revision")) and integer(value.get("count")) and value.count <= 100 and limits(value.get("limits")) and integer(value.get("pollAfterSeconds"), 1) and time(value.get("serverTime"))
+	return value is Dictionary and uuid(value.get("userId")) and (owner.is_empty() or value.userId == owner) and value.get("collection") == collection and integer(value.get("revision")) and integer(value.get("count")) and value.count <= 2147483647 and limits(value.get("limits")) and integer(value.get("pollAfterSeconds"), 1) and time(value.get("serverTime"))
 static func encodeBytes(value: PackedByteArray) -> String: return "" if value.is_empty() else Marshalls.raw_to_base64(value)
 static func decodeBytes(value: Variant) -> Variant:
-	if not value is String or value.length() > 87384 or _base64.search(value) == null: return null
+	if not value is String or value.length() > ((MAX_OBJECT + 2) / 3) * 4 or _base64.search(value) == null: return null
 	if value.is_empty(): return PackedByteArray()
 	var bytes: PackedByteArray = Marshalls.base64_to_raw(value)
 	return bytes if bytes.size() <= MAX_OBJECT and encodeBytes(bytes) == value else null

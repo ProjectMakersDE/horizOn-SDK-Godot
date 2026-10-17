@@ -45,6 +45,17 @@ func create_reviewed(options: Dictionary) -> Dictionary:
 	if h == null: return _fail("SESSION_REQUIRED")
 	if _ledger.is_empty() or not _same(h, _ledger.context): return _fail("REVIEW_REQUIRED")
 	return await _new(h, "create", "", _ledger.data.revision, options)
+
+## Full match detail may have expired. Only the original minimal source authorizes
+## this explicit ranked recovery; expiresAt is never permission to mint a replacement.
+func recover_pending_ranked_result(match_id: String) -> Dictionary:
+	var h: Node = _authorized()
+	if h == null: return _fail("SESSION_REQUIRED")
+	if _ledger.is_empty() or not _same(h, _ledger.context): return _fail("REVIEW_REQUIRED")
+	for source: Dictionary in _ledger.data.pendingResults:
+		if source.matchId == match_id:
+			return await _new(h, "ranked-run", source.matchId, source.finalStateRevision, {"finalStateRevision": source.finalStateRevision})
+	return _fail("ORIGINAL_SOURCE_REQUIRED")
 ## kind: join/decline/start/turn/timeout/leave/cancel/result/ranked-run. body uses exact REST fields.
 ## The player must first review read_match. For turn pass dataBase64 + finish explicitly;
 ## for result pass the original finalStateRevision/resultBase64/sorted winnerIds.

@@ -20,7 +20,7 @@ def group(revision,actor=A,leader=A,count=1,mode="request",id=G,private=True):
  if private:result.update(myRole="leader" if actor==leader else "member",data={"revision":1.5,"$key":{"a.b":[],"":{}},"fraction":1e-10,"seed":9007199254740993,"huge":123456789012345678901234567890,"precise":"__precise__","unicode":"é/😀"})
  return result
 def snapshot(actor,groups=None,incoming=None,outgoing=None):
- return {"userId":actor,"revision":R+len(EXPECTED),"groups":groups or [],"incomingInvites":incoming or [],"outgoingRequests":outgoing or [],"limits":{"maxMembers":20,"maxGroupsPerPlayer":1,"maxInvitations":20,"maxJoinRequests":20,"maxDataBytes":2048,"memberPageSize":50},"serverTime":stamp()}
+ return {"userId":actor,"revision":R+len(EXPECTED),"groups":groups or [],"incomingInvites":incoming or [],"outgoingRequests":outgoing or [],"limits":{"maxMembers":20,"maxGroupsPerPlayer":1,"maxInvitations":20,"maxJoinRequests":20,"maxDataBytes":2048,"memberPageSize":50,"maxPlayerInvitations":2,"maxPlayerRequests":2,"maxNameBytes":120,"maxDescriptionBytes":1024,"maxDataDepth":16},"serverTime":stamp()}
 def pending(index,revision,issuer=A):return {"groupId":G,"requestId":request_id(index),"issuerId":issuer,"createdAt":stamp(),"group":group(revision,private=False)}
 def add(method,path,actor,body,result,status=200,delay=0): EXPECTED.append((method,path,actor,body,status,copy.deepcopy(result),delay))
 def read(actor,groups=None,incoming=None,outgoing=None):add("GET",BASE+"?userId="+actor,actor,None,snapshot(actor,groups,incoming,outgoing))
