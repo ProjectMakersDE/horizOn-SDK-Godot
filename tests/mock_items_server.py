@@ -16,7 +16,7 @@ def snapshot(revision=R,power=9,equipped=False,discard=False):
  return {'userId':U,'revision':revision,'instances':([] if discard else [{'instanceId':I,'itemKey':'sword','properties':{'power':power,'text':'a\0é/😀\x1f'},'equipped':equipped,'createdAt':'2026-10-16T12:00:00Z'}])+[{'instanceId':J,'itemKey':'charm','properties':{'title':'ordinary','max':9007199254740991},'equipped':False,'createdAt':'2026-10-16T12:00:00Z'}],'limits':{'catalog':5000,'inventory':150,'receipts':50},'serverTime':'2026-10-16T12:00:10Z'}
 def catalog():return {'revision':R,'definitions':[{'key':'sword','name':'Sword','type':'weapon','rarity':'common','active':True,'baseProperties':{'power':9},'propertyRules':[{'key':'power','min':0,'max':10,'maxChangePerCall':1}]}],'nextAfterKey':None,'total':1,'limits':{'catalog':5000,'inventory':150,'receipts':50},'serverTime':'2026-10-16T12:00:10Z'}
 def offers(cost=5):return {'definitionVersion':1,'serverTime':'2026-10-16T12:00:10Z','definitions':[],'offers':[{'key':'sword','active':True,'costs':[{'key':'coins','amount':cost}],'rewards':[],'itemRewards':[{'itemKey':'sword','quantity':1}]}]}
-def values():return {'userId':U,'revision':1,'definitionVersion':1,'values':[{'key':'coins','balance':95,'earnedToday':0,'dailyCap':None}],'operationWindow':{'serverTime':'2026-10-16T12:00:10Z','oldestAcceptedAt':'2026-09-16T12:00:00Z'},'operation':{'operationId':'__ORIGINAL__','replayed':True,'applied':[],'items':[{'instanceId':I,'itemKey':'sword'}]}}
+def values():return {'userId':U,'revision':1,'definitionVersion':1,'values':[{'key':'coins','balance':95,'earnedToday':0,'dailyCap':None}],'operationWindow':{'serverTime':'2026-10-16T12:00:10Z','oldestAcceptedAt':'2026-09-16T12:00:00Z'},'operation':{'operationId':'__ORIGINAL__','replayed':True,'applied':[],'items':[]}}
 read=BASE+'?userId='+U
 offers_path=PV+'/offers?userId='+U
 purchase={'userId':U,'offerKey':'sword','operationId':'__ORIGINAL__'}
@@ -43,6 +43,21 @@ add('POST',BASE+'/adjust',{'userId':U,'instanceId':J,'expectedRevision':R+4,'cha
 add('GET',read,None,snapshot(R+5,discard=True))
 # Expiry keeps the original durable intent and never selects a new operation ID.
 add('POST',PV+'/purchase',{'userId':U,'offerKey':'sword','operationId':'1792152000000:00000000-0000-4000-8000-000000004011'},{'code':'OPERATION_EXPIRED','message':'expired original'},409)
+# Configured quotas are metadata, not historical parser ceilings or deletion rules.
+def configured_inventory(revision, lowered=False, equipped=False):
+ result=snapshot(revision);result['limits']={'catalog':20,'inventory':10,'receipts':10} if lowered else {'catalog':6000,'inventory':250,'receipts':80}
+ template=copy.deepcopy(result['instances'][0])
+ for i in range(199):
+  item=copy.deepcopy(template);item['instanceId']='00000000-0000-4000-8000-%012d'%(5100+i);result['instances'].append(item)
+ result['instances'][1]['equipped']=equipped
+ return result
+add('GET',read,None,configured_inventory(R+6))
+add('GET',read,None,configured_inventory(R+7,True))
+page=catalog();page.update(revision=R+1,total=6000,nextAfterKey='sword',limits={'catalog':6000,'inventory':250,'receipts':80})
+add('GET',BASE+'/catalog?userId='+U+'&limit=1',None,page)
+page=copy.deepcopy(page);page['definitions'][0]['key']='wand';page.update(nextAfterKey='wand',limits={'catalog':20,'inventory':10,'receipts':10})
+add('GET',BASE+'/catalog?userId='+U+'&limit=1&afterKey=sword&catalogRevision='+str(R+1),None,page)
+add('POST',BASE+'/equip',{'userId':U,'instanceId':J,'expectedRevision':R+7,'equipped':True},configured_inventory(R+8,True,True))
 assert len({(m,p.split('?')[0]) for m,p,*_ in CASES if p.startswith(BASE)})==5
 class Handler(BaseHTTPRequestHandler):
  seen=0;failure=None

@@ -188,6 +188,17 @@ func _run() -> void:
 	values.item_inventory_invalidated.connect(change)
 	assert((await values.purchase(USER, "sword", "1792152000000:00000000-0000-4000-8000-000000004012")).errorCode == "STALE_RESPONSE" and http.calls.size() == before, "Invalidation callback ABA cannot retarget a purchase")
 	values.item_inventory_invalidated.disconnect(change)
+	assert(HorizonItemModels.limits({"catalog":2147483647,"inventory":2147483647,"receipts":2147483647}).size() == 3)
+	for field: String in ["catalog", "inventory", "receipts"]:
+		for invalid: Variant in [0, -1, 2147483648, 1.0, "250"]:
+			var invalid_limits: Dictionary = {"catalog":6000,"inventory":250,"receipts":80}
+			invalid_limits[field] = invalid
+			assert(HorizonItemModels.limits(invalid_limits).is_empty())
+	var physical: Dictionary = catalog(1, 10)
+	physical.total = 65536
+	assert(not HorizonItemModels.page(physical, "", 1).is_empty())
+	physical.total = 65537
+	assert(HorizonItemModels.page(physical, "", 1).is_empty(), "UInt16 lifetime slots remain a technical encoding limit")
 	print("Godot Items policy: original strict integers/canonical Unicode, properties/pages/downgrades, cache floors/context ABA and additive PV receipts/rewards passed")
 	http.queue_free()
 	quit(0)

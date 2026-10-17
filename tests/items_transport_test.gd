@@ -55,7 +55,7 @@ func _run() -> void:
 	assert((await sample.retry_pending_purchase()).errorCode == "SESSION_REQUIRED")
 	assert(Pending.load_pending(path).pending.phase == "inventory")
 	var result: Dictionary = await sample.retry_pending_purchase()
-	assert(result.success and result.data.originalItems[0].instanceId == I and not FileAccess.file_exists(path))
+	assert(result.success and result.data.originalItems.is_empty() and not FileAccess.file_exists(path))
 	var property: Variant = result.data.inventory.instances[0].properties.text
 	assert(property is HorizonItemStringData and property.getJson() == '"a\\u0000é/😀\\u001f"' and property.getDisplayPreview() == "a\\u0000é/😀" + String.chr(31))
 	assert(result.data.inventory.instances[1].properties.title == "ordinary" and result.data.inventory.instances[1].properties.max == 9007199254740991)
@@ -78,6 +78,17 @@ func _run() -> void:
 	assert((await sample.retry_pending_purchase()).errorCode == "OPERATION_EXPIRED")
 	assert(Pending.load_pending(path).pending == expired)
 	assert(Pending.confirm(path, expired)) # Test fixture cleanup only; a game retains/reconciles this guard.
+	var expanded: Dictionary = await horizon.items.getInventory(U)
+	assert(expanded.success and expanded.data.instances.size() == 201 and expanded.data.limits == {"catalog":6000,"inventory":250,"receipts":80})
+	var lowered: Dictionary = await horizon.items.getInventory(U)
+	assert(lowered.success and lowered.data.instances.size() == 201 and lowered.data.limits.inventory == 10)
+	assert(horizon.items.getCurrentInventory().instances.size() == 201, "Lowered quota must not erase retained instances")
+	var first_page: Dictionary = await horizon.items.getCatalog(U, "", 1)
+	assert(first_page.success and first_page.data.total == 6000 and first_page.data.limits.catalog == 6000)
+	var next_page: Dictionary = await horizon.items.getCatalog(U, "sword", 1, R+1)
+	assert(next_page.success and next_page.data.total == 6000 and next_page.data.limits.catalog == 20 and next_page.data.definitions[0].key == "wand")
+	var edited: Dictionary = await horizon.items.setEquipped(U, J, R+7, true)
+	assert(edited.success and edited.data.instances.size() == 201 and edited.data.instances[1].equipped and edited.data.revision == R+8)
 	await create_timer(1.8).timeout
 	print("Godot actual Items example: catalog/review/price-change, persisted purchase/replay/inventory-only recovery, lossless NUL+Unicode/64-bit, equip/adjust/discard, original revisions and once-only uncertain actions passed")
 	sample.free()
