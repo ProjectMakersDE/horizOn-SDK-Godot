@@ -2,6 +2,9 @@ class_name HorizonItemModels
 extends RefCounted
 ## Strict original wire integers and the shared canonical property byte contract.
 const MAX := 9007199254740991
+# Wire field/encoding bounds, independent of configurable product quotas.
+const INT32_MAX := 2147483647
+const TEMPLATE_SLOT_CAPACITY := 65536
 static var _key: RegEx = RegEx.create_from_string("^[a-z][a-z0-9_]{0,63}\\z")
 static var _uuid: RegEx = RegEx.create_from_string("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\z")
 static var _tokens: RegEx = RegEx.create_from_string('"(?:[^"\\\\]|\\\\.)*"|[{}\\[\\]:,]|true|false|null|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?')
@@ -143,8 +146,7 @@ static func properties(raw: Variant) -> Variant:
 static func limits(raw: Variant) -> Dictionary:
 	if not raw is Dictionary: return {}
 	for field: String in ["catalog", "inventory", "receipts"]:
-		if not integer(raw.get(field), 1): return {}
-	if raw.catalog > 5000 or raw.inventory > 150 or raw.receipts > 50: return {}
+		if not integer(raw.get(field), 1) or raw[field] > INT32_MAX: return {}
 	return {"catalog": raw.catalog, "inventory": raw.inventory, "receipts": raw.receipts}
 
 static func references(raw: Variant) -> Variant:
@@ -174,7 +176,7 @@ static func inventory(raw: Dictionary, user: String) -> Dictionary:
 	if raw.get("userId") != user or not integer(raw.get("revision")) or not time(raw.get("serverTime")): return {}
 	var cap: Dictionary = limits(raw.get("limits"))
 	var instances: Variant = raw.get("instances")
-	if cap.is_empty() or not instances is Array or instances.size() > 150: return {}
+	if cap.is_empty() or not instances is Array: return {}
 	var seen: Dictionary = {}
 	var rows: Array = []
 	for item: Variant in instances:
@@ -204,7 +206,7 @@ static func template(raw: Variant) -> Dictionary:
 	return result if canonical(result).to_utf8_buffer().size() <= 2048 else {}
 
 static func page(raw: Dictionary, after: String, limit: int) -> Dictionary:
-	if not integer(raw.get("revision")) or not integer(raw.get("total")) or raw.total > 5000 or not time(raw.get("serverTime")) or not raw.has("nextAfterKey"): return {}
+	if not integer(raw.get("revision")) or not integer(raw.get("total")) or raw.total > TEMPLATE_SLOT_CAPACITY or not time(raw.get("serverTime")) or not raw.has("nextAfterKey"): return {}
 	var cap: Dictionary = limits(raw.get("limits"))
 	var definitions: Variant = raw.get("definitions")
 	if cap.is_empty() or not definitions is Array or definitions.size() > limit or raw.total < definitions.size(): return {}

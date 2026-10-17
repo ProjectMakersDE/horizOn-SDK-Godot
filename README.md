@@ -1052,6 +1052,8 @@ have `revision,definitions,nextAfterKey,total,limits,serverTime`; inventory has
 `instanceId,itemKey,properties,equipped,createdAt`. Current snapshots are copied,
 replace complete state, and retain over-limit historical instances after downgrade.
 
+`limits.catalog`, `limits.inventory` and `limits.receipts` are positive Int32 values from current Admin System Config. The old5000/150/50 defaults are not parser ceilings. Existing instances and catalog totals stay readable after lowering a quota, including more instances than the current inventory limit. Catalog totals retain the physical65,536 lifetime template-slot bound. The five-field instance JSON, original expectedRevision and property deltas are unchanged; compact basis versions stay server internals. Godot retains its independent raw-JSON safety frame (default1MiB, maximum2MiB).
+
 Each of the three mutations sends exactly once, including429/503/timeout. Keep the
 original instance/revision and explicitly read/reconcile an uncertain outcome.
 Never silently replace a revision or repeat a delta. Catalog pagination is one
