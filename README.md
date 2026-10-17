@@ -1539,9 +1539,9 @@ An explicit third argument stays unchanged on the wire. A continuation without a
 known original page or with a changed revision requires an explicit page restart.
 
 Minimal Match/final-revision→run-ID bindings are retained through the current
-authenticated context, including201 distinct pending runs. Auth changes clear
-this local map; there is no128-source eviction and no copied historical state,
+authenticated context, including 201 distinct pending runs. Auth changes clear
+this local map; there is no 128-source eviction and no copied historical state,
 items or rewards. Its local memory may grow across reads, separate from server
 storage and the size of any single response frame.
 
-Group revision floors likewise retain only minimal IDs and revisions until auth changes, including257 retained groups after policy is lowered to1. They hold no copied group content.
+Group revision floors likewise retain only minimal IDs and revisions until auth changes, including 257 retained groups after policy is lowered to 1. They hold no copied group content.

@@ -146,13 +146,16 @@ func _run() -> void:
 	http.responses = [{"failure": 409, "code": "REQUEST_NOT_FOUND"}]
 	assert((await groups.acceptInvite(USER, GROUP, 4294967296, original)).errorCode == "REQUEST_NOT_FOUND")
 	assert(http.calls[-1].body == {"userId": USER, "expectedRevision": 4294967296, "requestId": original} and groups.getCurrentGroups().is_empty())
-	# Bound detail revision memory, independent of lifetime queried group IDs.
+	# Preserve minimal detail revision floors throughout the current auth context.
+	var old_floor_count: int = groups._floors.size()
 	for index: int in range(60):
 		var row: Dictionary = _group(1)
 		row.id = "00000000-0000-4000-8000-%012d" % (9000 + index)
 		http.responses = [{"data": row}]
 		assert((await groups.getGroup(USER, row.id)).success)
-	assert(groups._floors.size() == 48)
+	assert(groups._floors.size() == old_floor_count + 60 and groups._floors[GROUP.to_lower()] == 3)
+	http.responses = [{"data": _group(2)}]
+	assert((await groups.getGroup(USER, GROUP)).errorCode == "STALE_RESPONSE")
 	# Queue capture freezes the original metadata before any wait; calls are serialized.
 	auth.signout_completed.emit()
 	http.responses = [{"data": _snapshot(1, 1), "delay": .1}, {"failure": 409, "code": "REVISION_CONFLICT"}]
@@ -191,7 +194,7 @@ func _run() -> void:
 	groups.groups_loaded.disconnect(callback)
 	http.sessionToken = ""
 	assert((await groups.getGroups(USER)).errorCode == "SESSION_REQUIRED")
-	print("Godot Groups policy: safe original revisions/IDs, arbitrary object data, bounded pages/floors, downgrade retention, atomic normalization and queue/callback/context ABA passed")
+	print("Godot Groups policy: safe original revisions/IDs, arbitrary object data, bounded pages/auth-context revision floors, downgrade retention, atomic normalization and queue/callback/context ABA passed")
 	http.queue_free()
 	quit(0)
 
