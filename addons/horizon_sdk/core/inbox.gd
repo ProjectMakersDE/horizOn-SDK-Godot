@@ -9,6 +9,7 @@ signal inbox_failed(error: String, code: String)
 signal _request_finished()
 
 const ENDPOINT := "/api/v1/app/inbox"
+enum SourceKind { UNKNOWN, FRIEND_REQUEST, FRIEND_ACCEPTED, GROUP_INVITATION, GROUP_REQUEST, GROUP_INVITATION_ACCEPTED, GROUP_REQUEST_ACCEPTED, MATCH_TURN, MARKET_RETURN }
 var _http: HorizonHttpClient
 var _auth: HorizonAuth
 var _values: HorizonPlayerValues
@@ -113,7 +114,7 @@ func _consume(raw: Variant, user_id: String, route: String, entry_id: String, se
 	if normalized.revision < _revision or normalized.broadcastRevision < _broadcastRevision or millis < _serverTime:
 		return _fail("STALE_RESPONSE")
 	if route == "/claim":
-		if raw.get("entryId") != entry_id or typeof(raw.get("replayed")) != TYPE_BOOL or not _values.acceptServerState(user_id, raw.get("playerValues")):
+		if raw.get("entryId") != entry_id or typeof(raw.get("replayed")) != TYPE_BOOL or not _validItems(raw.get("items", [])) or not _values.acceptServerState(user_id, raw.get("playerValues")):
 			return _fail("INVALID_RESPONSE")
 	_revision = normalized.revision
 	_broadcastRevision = normalized.broadcastRevision
@@ -124,6 +125,7 @@ func _consume(raw: Variant, user_id: String, route: String, entry_id: String, se
 	if route == "/claim":
 		data.inbox = normalized
 		data.playerValues = _values.getCurrentState()
+		data.items = raw.get("items", []).duplicate(true)
 		entry_claimed.emit(data.duplicate(true))
 	elif route.is_empty():
 		inbox_loaded.emit(data.duplicate(true))
@@ -141,10 +143,12 @@ func _normalize(raw: Variant, user_id: String, sent_cursor: String) -> Dictionar
 		result[field] = int(raw[field])
 	if result.pollAfterSeconds < 1:
 		return {}
-	for field: String in ["targeted", "broadcasts"]:
-		if not _nonnegative(result.limits.get(field)):
+	var defaults: Dictionary = {"freeTexts": 2, "freeTextBytes": 256, "freeTextRetentionDays": 7}
+	for field: String in ["targeted", "broadcasts", "freeTexts", "freeTextBytes", "freeTextRetentionDays"]:
+		var limit: Variant = result.limits.get(field, defaults.get(field))
+		if not _nonnegative(limit) or limit < 1 or limit > 2147483647:
 			return {}
-		result.limits[field] = int(result.limits[field])
+		result.limits[field] = int(limit)
 	for count: Variant in result.counts.values():
 		if not count is Dictionary:
 			return {}
@@ -157,19 +161,12 @@ func _normalize(raw: Variant, user_id: String, sent_cursor: String) -> Dictionar
 			return {}
 		result.entries = _current.entries.duplicate(true)
 	else:
-		# Downgrades prevent new deliveries, but cannot hide retained valuable messages.
-		# Use the server's global storage bounds, independent of the current plan limits.
-		if result.entries.size() > 550:
-			return {}
+		# Configured quotas govern writes. Retained entries remain readable after an admin lowers them.
 		var ids: Dictionary = {}
-		var kinds: Dictionary = {"message": 0, "broadcast": 0}
 		for entry: Variant in result.entries:
 			if not entry is Dictionary or not _validEntryId(entry.get("id", "")) or ids.has(entry.id) or not entry.get("kind") in ["message", "broadcast"] or not entry.id.begins_with(entry.kind + ":"):
 				return {}
 			ids[entry.id] = true
-			kinds[entry.kind] += 1
-			if kinds.message > 50 or kinds.broadcast > 500:
-				return {}
 			for field: String in ["type", "reference", "textKey", "createdAt", "expiresAt"]:
 				if not entry.get(field) is String:
 					return {}
@@ -182,15 +179,98 @@ func _normalize(raw: Variant, user_id: String, sent_cursor: String) -> Dictionar
 				if typeof(entry.get(field)) != TYPE_BOOL:
 					return {}
 			if entry.get("attachment") != null:
-				if not entry.attachment is Dictionary or not entry.attachment.get("values") is Array or entry.attachment.values.size() > 8:
+				if not entry.attachment is Dictionary:
 					return {}
+				for field: Variant in entry.attachment:
+					if field not in ["values", "itemReturn"]:
+						return {}
+				var amounts: Variant = entry.attachment.get("values", [])
+				if not amounts is Array or amounts.size() > 8:
+					return {}
+				entry.attachment.values = amounts
 				var keys: Dictionary = {}
-				for amount: Variant in entry.attachment.values:
-					if not amount is Dictionary or not amount.get("key") is String or keys.has(amount.key) or not _nonnegative(amount.get("amount")) or amount.amount <= 0:
+				for amount: Variant in amounts:
+					if not amount is Dictionary or amount.size() != 2 or not amount.get("key") is String or amount.key.is_empty() or amount.key.length() > 24 or keys.has(amount.key) or not _nonnegative(amount.get("amount")) or amount.amount <= 0:
 						return {}
 					keys[amount.key] = true
 					amount.amount = int(amount.amount)
+				var item: Variant = entry.attachment.get("itemReturn")
+				if item != null and (not item is Dictionary or item.size() != 3 or not _uuid(item.get("listingId")) or not _uuid(item.get("instanceId")) or not _itemKey(item.get("itemKey"))):
+					return {}
+			if _sourceKind(entry) != SourceKind.UNKNOWN and getSource(entry).is_empty():
+				return {}
+			if entry.kind == "message" and entry.type == "free_text" and entry.textKey == "horizon.inbox.free_text" and not isFreeText(entry):
+				return {}
 	return result
+
+## Navigation metadata only. Keep the original entry ID for read/remove/claim and use the source API for actions.
+static func getSource(entry: Dictionary) -> Dictionary:
+	var kind: SourceKind = _sourceKind(entry)
+	if kind == SourceKind.UNKNOWN or not _uuid(entry.get("reference")):
+		return {}
+	var result: Dictionary = {"kind": kind, "sourceId": String(entry.reference).to_lower()}
+	var parameters: Variant = entry.get("parameters")
+	if not parameters is Dictionary:
+		return {}
+	if kind in [SourceKind.FRIEND_REQUEST, SourceKind.FRIEND_ACCEPTED]:
+		if not _uuid(parameters.get("userId")):
+			return {}
+		result.userId = String(parameters.userId).to_lower()
+	elif kind in [SourceKind.GROUP_INVITATION, SourceKind.GROUP_REQUEST, SourceKind.GROUP_INVITATION_ACCEPTED, SourceKind.GROUP_REQUEST_ACCEPTED]:
+		if not _uuid(parameters.get("groupId")):
+			return {}
+		result.groupId = String(parameters.groupId).to_lower()
+	elif kind == SourceKind.MATCH_TURN:
+		var revision: Variant = parameters.get("revision")
+		if not _uuid(parameters.get("matchId")) or String(parameters.matchId).to_lower() != result.sourceId or not revision is String or not revision.is_valid_int() or revision.begins_with("+") or revision.length() > 16 or not _nonnegative(int(revision)):
+			return {}
+		result.revision = int(revision)
+	elif kind == SourceKind.MARKET_RETURN:
+		var attachment: Variant = entry.get("attachment")
+		if not attachment is Dictionary or not attachment.get("itemReturn") is Dictionary or not _uuid(attachment.itemReturn.get("listingId")) or String(attachment.itemReturn.listingId).to_lower() != result.sourceId:
+			return {}
+	return result
+
+static func _sourceKind(entry: Dictionary) -> SourceKind:
+	if entry.get("kind") != "message":
+		return SourceKind.UNKNOWN
+	match str(entry.get("type")) + ":" + str(entry.get("textKey")):
+		"friend_request:horizon.friends.request": return SourceKind.FRIEND_REQUEST
+		"friend_accept:horizon.friends.accept": return SourceKind.FRIEND_ACCEPTED
+		"group_invite:horizon.groups.invite": return SourceKind.GROUP_INVITATION
+		"group_request:horizon.groups.request": return SourceKind.GROUP_REQUEST
+		"group_accept-invite:horizon.groups.accept-invite": return SourceKind.GROUP_INVITATION_ACCEPTED
+		"group_accept-request:horizon.groups.accept-request": return SourceKind.GROUP_REQUEST_ACCEPTED
+		"match_turn:horizon.matches.your_turn": return SourceKind.MATCH_TURN
+		"marketplace:marketplace.item_return": return SourceKind.MARKET_RETURN
+	return SourceKind.UNKNOWN
+
+static func isFreeText(entry: Dictionary) -> bool:
+	return entry.get("kind") == "message" and entry.get("type") == "free_text" and entry.get("textKey") == "horizon.inbox.free_text" and entry.get("parameters") is Dictionary and entry.parameters.get("text") is String
+
+## Render as plain text, with markup/rich-text disabled.
+static func getFreeText(entry: Dictionary) -> String:
+	return entry.parameters.text if isFreeText(entry) else ""
+
+static func canClaim(entry: Dictionary) -> bool:
+	var attachment: Variant = entry.get("attachment")
+	return typeof(entry.get("claimed")) == TYPE_BOOL and not entry.claimed and attachment is Dictionary and ((attachment.get("values") is Array and not attachment.values.is_empty()) or attachment.get("itemReturn") is Dictionary)
+
+static func _validItems(value: Variant) -> bool:
+	if not value is Array or value.size() > 4:
+		return false
+	var ids: Dictionary = {}
+	for item: Variant in value:
+		if not item is Dictionary or not _uuid(item.get("instanceId")) or not _itemKey(item.get("itemKey")) or ids.has(String(item.instanceId).to_lower()):
+			return false
+		ids[String(item.instanceId).to_lower()] = true
+	return true
+
+static func _uuid(value: Variant) -> bool:
+	return value is String and RegEx.create_from_string("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\z").search(value) != null
+
+static func _itemKey(value: Variant) -> bool:
+	return value is String and RegEx.create_from_string("^[a-z][a-z0-9_]{0,63}\\z").search(value) != null
 
 func _hasSession() -> bool:
 	var user: HorizonUserData = _auth.getCurrentUser()

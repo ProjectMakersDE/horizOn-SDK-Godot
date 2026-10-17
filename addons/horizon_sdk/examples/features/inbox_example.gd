@@ -12,6 +12,12 @@ func refresh_inbox() -> Dictionary:
 	if result.success:
 		# Render the complete materialized entries, including unchanged responses.
 		print("Inbox entries: %d; next permitted lifecycle poll after %ds" % [result.data.entries.size(), result.data.pollAfterSeconds])
+		for entry: Dictionary in result.data.entries:
+			# Set UI text with rich text disabled; do not interpret free text as markup.
+			print(HorizonInbox.getFreeText(entry) if HorizonInbox.isFreeText(entry) else entry.textKey)
+			var source: Dictionary = HorizonInbox.getSource(entry)
+			if not source.is_empty():
+				print("Source: ", source)
 	return result
 
 ## A new intent requires the exact claimable entry in the current authorized snapshot.
@@ -50,6 +56,8 @@ func claim_selected_entry(entry_id: String) -> Dictionary:
 			return _failure("PENDING_STORAGE_ERROR")
 		# SDK replaced Player Values with the authoritative state. Never add attachment amounts.
 		print(result.data.playerValues.values)
+		# References are not complete items. Explicitly refresh the authoritative inventory after a return.
+		print(result.data.get("items", []))
 	return result
 
 func _claimable(snapshot: Dictionary, user_id: String, entry_id: String) -> bool:
@@ -57,8 +65,7 @@ func _claimable(snapshot: Dictionary, user_id: String, entry_id: String) -> bool
 		return false
 	for entry: Variant in snapshot.entries:
 		if entry is Dictionary and entry.get("id") == entry_id and typeof(entry.get("claimed")) == TYPE_BOOL and not entry.claimed:
-			var attachment: Variant = entry.get("attachment")
-			return attachment is Dictionary and attachment.get("values") is Array and not attachment.values.is_empty()
+			return HorizonInbox.canClaim(entry)
 	return false
 
 func _failure(code: String) -> Dictionary:
