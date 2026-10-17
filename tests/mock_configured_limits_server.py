@@ -63,6 +63,9 @@ add('GET','/api/v1/app/matches/limits',{'limits':MATCH_CAP,'config':{'revision':
 add('GET','/api/v1/app/matches',mine())
 add('GET','/api/v1/app/matches/'+uid(180000),point())
 add('GET','/api/v1/app/matches',mine())
+add('POST','/api/v1/app/matches',{'code':'UNAVAILABLE'},body='maximum-create',status=503)
+add('GET','/api/v1/app/matches',dict(mine(),revision=2))
+add('GET','/api/v1/app/matches',dict(mine(),revision=2))
 ranked={'userId':U,'finalStateRevision':5}
 add('POST','/api/v1/app/matches/'+uid(210000)+'/ranked-run',{'code':'UNAVAILABLE'},body=ranked,status=503)
 add('POST','/api/v1/app/matches/'+uid(210000)+'/ranked-run',run(),body=ranked)
@@ -84,6 +87,12 @@ class Handler(BaseHTTPRequestHandler):
     assert set(body)=={'userId','expectedRevision','name','description','joinMode','data'}
     assert body['userId']==U and body['expectedRevision']==1 and body['name']==NAME and body['description']==DESCRIPTION
     assert body['data']['seed']==9007199254740993 and b'1.0000000000000000000001'in raw
+   elif expected=='maximum-create':
+    assert self.headers.get('If-Match')=='1'
+    assert set(body)=={'userId','name','capacity','visibility','strength','turnSeconds','timeoutPolicy','ranked','dataBase64','inviteeIds'}
+    assert body['userId']==U and body['name']=='Maximum original' and body['capacity']==2 and body['inviteeIds']==[]
+    assert body['visibility']=='private' and body['strength']==0 and body['turnSeconds']==60 and body['timeoutPolicy']=='skip' and body['ranked']is False
+    assert base64.b64decode(body['dataBase64'],validate=True)==MAX_STATE
    else:assert body==expected,(index,body,expected)
    type(self).seen+=1
   except Exception as error:

@@ -67,8 +67,17 @@ func _run() -> void:
 	ok(point.success and point.data.match.data.size() == 14648*1024 and digest(point.data.match.data) == "d12011f3d43c3012b201dd6ea5c40c1e421ad4f6a35e2ce2a5eb8f88899f2fe2")
 	var sample := Sample.new(); root.add_child(sample)
 	ok((await sample.read_matches()).success)
-	ok((await sample.recover_pending_ranked_result(uid(210000))).errorCode == "UNAVAILABLE")
 	var file: String = Pending.path(h._http.apiKey,U)
+	var options: Dictionary = {"name":"Maximum original","capacity":2,"visibility":"private","strength":0,"turnSeconds":60,"timeoutPolicy":"skip","ranked":false,"dataBase64":point.data.match.dataBase64,"inviteeIds":[]}
+	ok((await sample.create_reviewed(options)).errorCode == "UNAVAILABLE")
+	var maximum_original: Dictionary = Pending.load_pending(file).pending
+	ok(maximum_original.expectedRevision == 1 and HorizonMatchModels.parse(maximum_original.bodyJson).dataBase64 == options.dataBase64)
+	sample.free(); sample = Sample.new(); root.add_child(sample)
+	ok((await sample.create_reviewed(options)).errorCode == "REVIEW_REQUIRED" and Pending.load_pending(file).pending == maximum_original)
+	ok((await sample.inspect_pending()).success and Pending.load_pending(file).pending == maximum_original)
+	ok(sample.acknowledge_reconciliation().success and Pending.load_pending(file).pending.is_empty())
+	ok((await sample.read_matches()).success)
+	ok((await sample.recover_pending_ranked_result(uid(210000))).errorCode == "UNAVAILABLE")
 	var saved: Dictionary = Pending.load_pending(file).pending
 	ok(saved.matchId == uid(210000) and saved.expectedRevision == 5 and saved.bodyJson == '{"finalStateRevision":5}')
 	sample.free(); sample = Sample.new(); root.add_child(sample)

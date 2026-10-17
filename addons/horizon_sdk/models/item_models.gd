@@ -11,6 +11,7 @@ static var _uuid: RegEx = RegEx.create_from_string("^[0-9a-fA-F]{8}-[0-9a-fA-F]{
 # state must not exhaust PCRE's per-character backtracking/match budget.
 static var _tokens: RegEx = RegEx.create_from_string('"(?:[^"\\\\]++|\\\\.)*+"|[{}\\[\\]:,]|true|false|null|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?')
 static var _integer: RegEx = RegEx.create_from_string("^-?(0|[1-9][0-9]*)\\z")
+static var _quote_escapes: RegEx = RegEx.create_from_string("[\\x00-\\x1f\"\\\\]")
 static var _hex: RegEx = RegEx.create_from_string("^[0-9a-fA-F]{4}\\z")
 
 static func key(value: Variant) -> bool: return value is String and _key.search(value) != null
@@ -112,19 +113,25 @@ static func _string(text: String) -> Variant:
 	return HorizonItemStringData._fromParts(parts, text)
 
 static func quote(value: String) -> String:
-	var result: String = '"'
-	for character: String in value:
-		var code: int = character.unicode_at(0)
+	# Slice only at escapes. Repeated per-character String += copies a large
+	# legal Match state quadratically; unchanged runs need one shared slice.
+	var parts: PackedStringArray = ['"']
+	var start: int = 0
+	for escaped: RegExMatch in _quote_escapes.search_all(value):
+		parts.append(value.substr(start, escaped.get_start() - start))
+		var code: int = value.unicode_at(escaped.get_start())
 		match code:
-			34: result += '\\"'
-			92: result += "\\\\"
-			8: result += "\\b"
-			9: result += "\\t"
-			10: result += "\\n"
-			12: result += "\\f"
-			13: result += "\\r"
-			_: result += ("\\u%04x" % code) if code < 32 else character
-	return result + '"'
+			34: parts.append('\\"')
+			92: parts.append("\\\\")
+			8: parts.append("\\b")
+			9: parts.append("\\t")
+			10: parts.append("\\n")
+			12: parts.append("\\f")
+			13: parts.append("\\r")
+			_: parts.append("\\u%04x" % code)
+		start = escaped.get_end()
+	parts.append(value.substr(start)); parts.append('"')
+	return "".join(parts)
 
 static func canonical(value: Variant) -> String:
 	if value is HorizonItemStringData: return value.getJson()
