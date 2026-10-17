@@ -63,7 +63,7 @@ func _run() -> void:
 		return
 
 	# 4. Gift code with grants: grantedUnlocks in the result, profile cache dropped.
-	var redeemed := await gift_codes.redeem("SUPPORTER")
+	var redeemed := await gift_codes.redeemPrepared({"protocolVersion":2,"projectScope":http.apiKey.sha256_text(),"userId":"user-881","code":"SUPPORTER","campaignId":"00000000-0000-4000-8000-000000001007","expectedCount":"0","configRevision":"1"})
 	if redeemed.get("grantedUnlocks", []) != ["badge.supporter"]:
 		_fail("redeem must return grantedUnlocks")
 		return

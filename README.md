@@ -253,52 +253,16 @@ for entry in news:
 
 ### Gift Codes
 
-`redeem(code, idempotency_id = "")` and `redeemParsed(code, idempotency_id = "")`
-require the signed-in player's Bearer session. Configure up to eight Player Values
-rewards separately from arbitrary `giftData`. Returned `grantedValues` are already
-booked on the server; never add those amounts locally. `playerValues` is the full
-current snapshot (or null for legacy/no-value receipts), and `replayed` identifies
-an original receipt. The singleton hands a valid snapshot to `Horizon.playerValues`
-without summing deltas. Legacy backends default to empty grants/null state/false replay.
-Existing signals and `giftData` parsing/cosmetic unlocks remain available.
+Prepare once, durably persist the complete scoped intent, then send it. The feature example provides separate explicit redeem/retry actions and a guarded file store.
 
 ```gdscript
-# After sign-in. This helper preserves the exact code + UUID before any HTTP request.
-const Pending = preload("res://addons/horizon_sdk/examples/features/pending_gift_code.gd")
-var project: String = Horizon.getConfig().api_key
-var user_id: String = Horizon.auth.getCurrentUser().userId
-var loaded: Dictionary = Pending.load_pending(project, user_id)
-if not loaded.success: return # keep files for reconciliation
-var original: Dictionary = loaded.pending
-if original.is_empty():
-    original = {"userId": user_id, "code": "ABCD-1234", "idempotencyId": HorizonGiftCodes.createRedemptionId()}
-    if not Pending.store(project, original): return
-var result: Dictionary = await Horizon.giftCodes.redeemParsed(original.code, original.idempotencyId)
-if result.get("success", false):
-    Pending.confirm(project, original)
-    print(result.grantedValues, result.playerValues, result.replayed)
-# Any error/timeout keeps the original file/ID. Recover status/current state before retrying it.
+var intent: Dictionary = await Horizon.giftCodes.prepareRedemption("ABCD-1234")
+# Persist all intent fields for this project/player BEFORE sending.
+var result: Dictionary = await Horizon.giftCodes.redeemPrepared(intent)
+# After uncertainty/restart: load and resend the same intent; never prepare a replacement automatically.
 ```
 
-The runnable `examples/features/gift_codes_example.gd` also restores the existing
-identity and persists a signup/recovery marker; an uncertain signup or failed
-restore never creates another guest. Its storage is bound to project/player,
-independent of regional host, with exact original comparisons and atomic locks.
-Corrupt/interrupted originals stay blocked for reconciliation. No background polling.
-
-The empty default preserves legacy omission of `idempotencyId`; it gets exactly one
-HTTP attempt. Nonempty explicit IDs must be nonblank and at most128 UTF-16 units.
-The transport may retry an explicit ID only with the exact original body, project,
-host and session. A lost response never creates/replaces an ID automatically.
-Signup always gets exactly one transport attempt, even after5xx/timeout, because
-another request could create another server identity. Permanent4xx is not retried.
-Host/project/session transitions use a synchronous monotone generation, including
-A→B→A changes without auth signals. Decoded JSON field names and original number
-tokens are checked before numeric coercion; duplicate decoded keys reject.
-Late responses cannot clear another session's profile or overwrite a newer balance,
-catalogue, server-clock watermark or cache epoch. An unrelated Player Values cache
-clear preserves a successful pure legacy giftData result/callback. Both hosted and simpleServer REST
-use the same additive contract; this adds no cache-refresh HTTP or polling requests.
+Counts/revisions are canonical Int64 decimal strings. Replay has `alreadyApplied/replayed=true`, current Player Values, null giftData and empty grants. Replace current balances, never add grants. V1 `redeem(code[, id])` returns `UPGRADE_REQUIRED`; protected `MIGRATION_REQUIRED`, `COUNT_AHEAD`, `CAMPAIGN_CHANGED`, `COUNTER_EXHAUSTED` and domain errors require reconciliation. An intent cannot move to another player/project or a reused visible code. `redeemPreparedParsed` only parses fresh opaque giftData and never turns it into authoritative balances.
 
 ### Player Profile
 
@@ -879,10 +843,7 @@ explicit recovery. A regional host change retains the original slot. Only a
 successful authoritative claim confirms and removes its exact stored intent.
 This sample protection adds no server reads, polling or reward calculation.
 
-Explicit gift-redemption IDs use the server's Unicode whitespace definition for
-local blank validation (including NBSP, figure space and narrow NBSP). Nonblank IDs
-remain unchanged. This does not change the existing one-attempt legacy transport;
-the current server rejects an explicit blank ID rather than generating a legacy ID.
+Gift V2 transport retries reuse the original campaign/count/revision strings. Legacy arbitrary-ID calls are closed with `UPGRADE_REQUIRED` and never authorize a new operation.
 
 ### Achievements (TASK-1008, Develop)
 

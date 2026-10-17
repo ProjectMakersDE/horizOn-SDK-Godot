@@ -7,10 +7,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from mock_http import report_rejection, send_json
 
 
-EXPECTED_PATH = "/api/v1/app/gift-codes/redeem"
+EXPECTED_PATH = "/api/v1/app/gift-codes/validate"
 EXPECTED_BODY = {
     "code": "SUMMER2026",
-    "userId": "user-886",
 }
 
 
@@ -33,7 +32,7 @@ class ContractHandler(BaseHTTPRequestHandler):
             mismatches.append(f"path={self.path!r}")
         if self.headers.get("X-API-Key") != "project-key-886":
             mismatches.append("missing or incorrect X-API-Key")
-        if self.headers.get("Authorization") != "Bearer session-token-886":
+        if self.headers.get("Authorization") is not None:
             mismatches.append("missing or incorrect Authorization")
         if self.headers.get_content_type() != "application/json":
             mismatches.append(f"content-type={self.headers.get_content_type()!r}")
@@ -44,7 +43,7 @@ class ContractHandler(BaseHTTPRequestHandler):
             self._reject(", ".join(mismatches))
             return
 
-        send_json(self, 200, {"success": True, "message": "ok", "giftData": "{}"})
+        send_json(self, 200, {"valid": True})
 
     def _reject(self, message):
         type(self).failure = message

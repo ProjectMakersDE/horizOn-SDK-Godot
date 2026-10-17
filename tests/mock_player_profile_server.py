@@ -71,13 +71,13 @@ EXPECTED = [
         "POST",
         REDEEM_PATH,
         None,
-        {"code": "SUPPORTER", "userId": "user-881"},
+        {"code":"SUPPORTER","userId":"user-881","protocolVersion":2,"campaignId":"00000000-0000-4000-8000-000000001007","expectedCount":"0","configRevision":"1"},
         200,
         {
             "success": True,
             "message": "Gift code redeemed successfully",
             "giftData": "{\"grants\": [\"badge.supporter\"]}",
-            "grantedUnlocks": ["badge.supporter"],
+            "grantedUnlocks":["badge.supporter"],"campaignId":"00000000-0000-4000-8000-000000001007","count":"1","configRevision":"1","alreadyApplied":False,"replayed":False,
         },
     ),
 ]

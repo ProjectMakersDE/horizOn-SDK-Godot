@@ -19,6 +19,7 @@ var _auth: HorizonAuth
 var _playerProfile: HorizonPlayerProfile
 var _values: HorizonPlayerValues
 var _epoch: int = 0
+var _lastErrorCode: String = ""
 
 
 ## Initialize the gift code manager.
@@ -47,111 +48,109 @@ func setPlayerValues(values: HorizonPlayerValues) -> void:
 	_values = values
 
 
-## Validate a gift code without redeeming it.
-## @param code The gift code to validate
-## @return True if code is valid and can be redeemed, false otherwise, null on error
+## Canonical Int64 strings avoid Godot JSON's floating-point number conversion.
+static func canonicalCount(value: Variant) -> bool:
+	if not value is String or value.is_empty() or value.length() > 19: return false
+	if value.length() > 1 and value[0] == "0": return false
+	for character: String in value:
+		if character < "0" or character > "9": return false
+	return value.length() < 19 or value <= "9223372036854775807"
+
+static func validIntent(intent: Variant, project: String, user: String) -> bool:
+	return intent is Dictionary and intent.size() == 7 and intent.get("protocolVersion") == 2 and intent.get("projectScope") == project.sha256_text() and intent.get("userId") == user and not user.is_empty() and intent.get("code") is String and not intent.code.strip_edges().is_empty() and intent.code.length() <= 50 and _uuid(intent.get("campaignId")) and canonicalCount(intent.get("expectedCount")) and canonicalCount(intent.get("configRevision"))
+
+static func _uuid(value: Variant) -> bool:
+	return value is String and RegEx.create_from_string("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\z").search(value) != null
+
+func _hasSession() -> bool:
+	return _auth.isSignedIn() and not _http.sessionToken.is_empty() and _auth.getCurrentUser().accessToken == _http.sessionToken
+
+func getLastErrorCode() -> String:
+	return _lastErrorCode
+
+## Read-only validity check, without a session requirement.
 func validate(code: String) -> Variant:
-	if code.is_empty():
-		_logger.error("Gift code is required")
-		return null
+	if code.strip_edges().is_empty() or code.length() > 50: return null
+	var response: HorizonNetworkResponse = await _http.postAsync("/api/v1/app/gift-codes/validate", {"code":code}, false)
+	if not response.isSuccess or not response.data is Dictionary or typeof(response.data.get("valid")) != TYPE_BOOL: return null
+	code_validated.emit(code,response.data.valid)
+	return response.data.valid
 
-	if not _auth.isSignedIn():
-		_logger.error("User must be signed in to validate gift code")
-		return null
-
-	var user := _auth.getCurrentUser()
-
-	var request := {
-		"code": code,
-		"userId": user.userId
-	}
-
+## Read-only preparation. Persist every returned field before redeemPrepared().
+func prepareRedemption(code: String) -> Dictionary:
+	_lastErrorCode = ""
+	if code.strip_edges().is_empty() or code.length() > 50: return _prepareFailure("INVALID_REQUEST")
+	if not _hasSession(): return _prepareFailure("SESSION_REQUIRED")
 	var scope: Dictionary = _scope()
 	var epoch: int = _epoch
-	var response := await _http.postAsync("/api/v1/app/gift-codes/validate", request)
-	if scope != _scope() or epoch != _epoch: return null
+	var response: HorizonNetworkResponse = await _http.postAsync("/api/v1/app/gift-codes/validate", {"code":code,"userId":scope.user,"includeIntent":true},true)
+	if scope != _scope() or epoch != _epoch: return _prepareFailure("STALE_RESPONSE")
+	if not response.isSuccess: return _prepareFailure(HorizonInbox._responseCode(response))
+	if not response.data is Dictionary or typeof(response.data.get("valid")) != TYPE_BOOL: return _prepareFailure("INVALID_RESPONSE")
+	if not response.data.valid: return _prepareFailure("CODE_NOT_ELIGIBLE")
+	var raw: Dictionary = response.data
+	var intent: Dictionary = {"protocolVersion":raw.get("protocolVersion"),"projectScope":str(scope.project).sha256_text(),"userId":scope.user,"code":code,"campaignId":raw.get("campaignId"),"expectedCount":raw.get("expectedCount"),"configRevision":raw.get("configRevision")}
+	if not validIntent(intent,scope.project,scope.user): return _prepareFailure("INVALID_RESPONSE")
+	return intent
 
-	if response.isSuccess and response.data is Dictionary:
-		var isValid: bool = response.data.get("valid", false)
-		_logger.info("Gift code %s validation: %s" % [code, "valid" if isValid else "invalid"])
-		code_validated.emit(code, isValid)
-		return isValid
+func _prepareFailure(error: String) -> Dictionary:
+	_lastErrorCode = error
+	return {}
 
-	_logger.error("Gift code validation failed: %s" % response.error)
-	return null
+## V1 never silently advances a counter or prepares a replacement operation.
+func redeem(code: String, _idempotency_id: String = "") -> Dictionary:
+	return _failure(code,"UPGRADE_REQUIRED","Prepare, persist and send a V2 intent; reconcile old V1 operations")
 
-
-## Redeem using the original caller-persisted ID (1..128 UTF-16 units).
-## The empty default preserves legacy omission and allows only one transport attempt.
-## Never replace an uncertain ID. grantedValues are already booked, never add them locally.
-## Existing signals and giftData parsing remain available.
-func redeem(code: String, idempotency_id: String = "") -> Dictionary:
-	if code.is_empty():
-		code_redeem_failed.emit(code, "Gift code is required")
-		return {}
-	if not _auth.isSignedIn() or _http.sessionToken.is_empty() or _auth.getCurrentUser().accessToken != _http.sessionToken:
-		code_redeem_failed.emit(code, "User must be signed in")
-		return {}
-	if not idempotency_id.is_empty() and (_isBlankId(idempotency_id) or idempotency_id.to_utf16_buffer().size() > 256):
-		return _failure(code, "INVALID_REQUEST", "Keep one nonblank original ID of at most128 UTF-16 units")
+## A restart or uncertain outcome reuses this exact scoped tuple. No preparation occurs here.
+func redeemPrepared(original: Dictionary) -> Dictionary:
+	_lastErrorCode = ""
+	if not _hasSession(): return _failure("","SESSION_REQUIRED","Player session required")
 	var scope: Dictionary = _scope()
+	if not validIntent(original,scope.project,scope.user): return _failure("","INVALID_REQUEST","Original scoped V2 intent required")
+	var intent: Dictionary = original.duplicate(true)
+	var code: String = intent.code
 	var epoch: int = _epoch
 	var values_epoch: int = _values.getCacheEpoch() if _values != null else -1
-	var request: Dictionary = {"code": code, "userId": scope.user}
-	if not idempotency_id.is_empty(): request.idempotencyId = idempotency_id
-	var response: HorizonNetworkResponse = await _http.postAsync("/api/v1/app/gift-codes/redeem", request, true)
-	if scope != _scope() or epoch != _epoch:
-		return _failure(code, "STALE_RESPONSE", "Session or cache changed; retain the original redemption intent")
-	if not response.isSuccess:
-		return _failure(code, response.serverCode if not response.serverCode.is_empty() else "HTTP_%d" % response.statusCode, response.error)
+	var request: Dictionary = {"code":code,"userId":intent.userId,"protocolVersion":2,"campaignId":intent.campaignId,"expectedCount":intent.expectedCount,"configRevision":intent.configRevision}
+	var response: HorizonNetworkResponse = await _http.postAsync("/api/v1/app/gift-codes/redeem",request,true)
+	if scope != _scope() or epoch != _epoch: return _failure(code,"STALE_RESPONSE","Identity changed; original intent retained")
+	if not response.isSuccess: return _failure(code,HorizonInbox._responseCode(response),response.error)
 	if not response.data is Dictionary or typeof(response.data.get("success")) != TYPE_BOOL or not HorizonPlayerValues._safeJsonIntegers(response.rawBody):
-		return _failure(code, "INVALID_RESPONSE", "Invalid gift-code response; retain the original intent")
+		return _failure(code,"INVALID_RESPONSE","Invalid result")
 	var raw: Dictionary = response.data
 	var message: Variant = raw.get("message", "")
-	var gift_data: Variant = raw.get("giftData", "")
-	if not message is String or (gift_data != null and not gift_data is String) or (raw.has("replayed") and typeof(raw.replayed) != TYPE_BOOL):
-		return _failure(code, "INVALID_RESPONSE", "Invalid gift-code result")
+	var gift_data: Variant = raw.get("giftData")
+	if not message is String or (gift_data != null and not gift_data is String) or typeof(raw.get("replayed")) != TYPE_BOOL or typeof(raw.get("alreadyApplied")) != TYPE_BOOL or raw.replayed != raw.alreadyApplied or raw.get("campaignId") != intent.campaignId or not canonicalCount(raw.get("count")) or not canonicalCount(raw.get("configRevision")):
+		return _failure(code,"INVALID_RESPONSE","Invalid sequence result")
+	if str(raw.count).pad_zeros(19) <= str(intent.expectedCount).pad_zeros(19): return _failure(code,"INVALID_RESPONSE","Sequence was not consumed")
+	if not raw.alreadyApplied and (raw.count != str(int(intent.expectedCount)+1) or raw.configRevision != intent.configRevision): return _failure(code,"INVALID_RESPONSE","Fresh sequence differs from prepared identity")
 	var grants: Variant = _parseGrantedValues(raw.get("grantedValues", []))
+	var unlocks: Variant = raw.get("grantedUnlocks", [])
+	if grants == null or not unlocks is Array: return _failure(code,"INVALID_RESPONSE","Invalid grants")
+	for item: Variant in unlocks:
+		if not item is String: return _failure(code,"INVALID_RESPONSE","Invalid cosmetic grant")
+	if raw.alreadyApplied and (gift_data != null or not grants.is_empty() or not unlocks.is_empty()): return _failure(code,"INVALID_RESPONSE","Replay must not carry historical rewards")
 	var state: Variant = raw.get("playerValues")
-	if grants == null or (state != null and HorizonPlayerValues._normalizeState(state).is_empty()) or (not grants.is_empty() and state == null):
-		return _failure(code, "INVALID_RESPONSE", "Invalid server-owned value snapshot")
+	if (state != null and HorizonPlayerValues._normalizeState(state).is_empty()) or (not grants.is_empty() and state == null): return _failure(code,"INVALID_RESPONSE","Invalid complete state")
 	if state != null:
-		if _values != null and values_epoch != _values.getCacheEpoch():
-			return _failure(code,"STALE_RESPONSE","Value cache changed; retain the original redemption intent")
 		state = HorizonPlayerValues._normalizeState(state)
-		if state.userId != scope.user:
-			return _failure(code, "INVALID_RESPONSE", "Value snapshot belongs to another player")
-		if raw.success and _values != null and not _values.acceptServerState(scope.user, state):
-			return _failure(code, "STALE_RESPONSE", "A newer value snapshot is already retained")
-	var unlocks: Array = _parseGrantedUnlocks(raw.get("grantedUnlocks"))
+		if state.userId != scope.user: return _failure(code,"INVALID_RESPONSE","Foreign value state")
+		if _values != null and (values_epoch != _values.getCacheEpoch() or (raw.success and not _values.acceptServerState(scope.user,state))): return _failure(code,"STALE_RESPONSE","Value cache changed")
 	if raw.success:
-		if not unlocks.is_empty() and _playerProfile != null: _playerProfile.clearCache()
-		code_redeemed.emit(code, gift_data if gift_data is String else "")
-	else:
-		code_redeem_failed.emit(code, message)
-	return {"success": raw.success, "message": message, "giftData": gift_data, "grantedUnlocks": unlocks,
-		"grantedValues": grants, "playerValues": state, "replayed": raw.get("replayed", false), "errorCode": ""}
+		if (raw.alreadyApplied or not unlocks.is_empty()) and _playerProfile != null: _playerProfile.clearCache()
+		code_redeemed.emit(code,gift_data if gift_data is String else "")
+	return {"success":raw.success,"message":message,"giftData":gift_data,"grantedUnlocks":unlocks,"grantedValues":grants,"playerValues":state,"replayed":raw.replayed,"alreadyApplied":raw.alreadyApplied,"campaignId":raw.campaignId,"count":raw.count,"configRevision":raw.configRevision,"errorCode":""}
 
-## Parsed arbitrary giftData never becomes authoritative Player Values.
-func redeemParsed(code: String, idempotency_id: String = "") -> Dictionary:
-	var result: Dictionary = await redeem(code, idempotency_id)
-	if result.is_empty(): return {}
-	var parsed: Dictionary = {"success": result.success, "message": result.message,
-		"grantedUnlocks": result.grantedUnlocks, "grantedValues": result.grantedValues,
-		"playerValues": result.playerValues, "replayed": result.replayed, "errorCode": result.errorCode}
-	var gift_data: Variant = result.giftData
-	var rewards: Variant = JSON.parse_string(gift_data) if gift_data is String and not gift_data.is_empty() else null
-	parsed.rewards = rewards if rewards is Dictionary else {}
-	if gift_data != null and gift_data != "" and not rewards is Dictionary: parsed.rawGiftData = gift_data
-	return parsed
+func redeemPreparedParsed(intent: Dictionary) -> Dictionary:
+	var result: Dictionary = await redeemPrepared(intent)
+	if not result.get("success",false): return result
+	var raw: Variant = result.giftData
+	var rewards: Variant = JSON.parse_string(raw) if raw is String and not raw.is_empty() else null
+	result.rewards = rewards if rewards is Dictionary else {}
+	return result
 
-## Generate once, persist with the original code before redeem(), then reuse across retries.
-static func createRedemptionId() -> String:
-	var bytes: PackedByteArray = Crypto.new().generate_random_bytes(16)
-	bytes[6] = (bytes[6] & 15) | 64
-	bytes[8] = (bytes[8] & 63) | 128
-	var hex: String = bytes.hex_encode()
-	return "%s-%s-%s-%s-%s" % [hex.substr(0,8),hex.substr(8,4),hex.substr(12,4),hex.substr(16,4),hex.substr(20)]
+func redeemParsed(code: String, _idempotency_id: String = "") -> Dictionary:
+	return await redeem(code,_idempotency_id)
 
 func _scope() -> Dictionary:
 	return {"host": _http.activeHost, "project": _http.apiKey, "session": _http.sessionToken, "user": _auth.getCurrentUser().userId, "generation": _http.getContextGeneration()}
@@ -163,6 +162,7 @@ func _changedUser(_user: HorizonUserData) -> void:
 	_reset()
 
 func _failure(code: String, error_code: String, message: String) -> Dictionary:
+	_lastErrorCode = error_code
 	code_redeem_failed.emit(code, message)
 	return {"success": false, "message": message, "giftData": "", "grantedUnlocks": [],
 		"grantedValues": [], "playerValues": null, "replayed": false, "errorCode": error_code}
