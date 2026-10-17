@@ -118,8 +118,8 @@ static func receipt(raw: Variant) -> Dictionary:
 	return result
 static func matches_receipt(value: Dictionary, kind: String, body: Dictionary, listing_id: String) -> bool:
 	if value.get("operationId") != body.get("operationId") or value.get("issuedAt") != body.get("issuedAt") or value.get("kind") != kind: return false
-	if kind == "create": return value.itemReference.instanceId == body.instanceId and value.price == body.price
-	if value.listingId != listing_id: return false
+	if kind == "create": return value.listingRevision == 1 and value.itemReference.instanceId == body.instanceId and value.price == body.price
+	if value.listingId != listing_id or value.listingRevision != body.expectedListingRevision + 1: return false
 	return kind != "buy" or (value.price == body.expectedPrice and value.currencyKey == body.expectedCurrencyKey)
 static func _listing_rows(raw: Variant, maximum: int = -1) -> Variant:
 	if not raw is Array or (maximum >= 0 and raw.size() > maximum): return null
