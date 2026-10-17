@@ -1440,8 +1440,12 @@ scope hashes the API key and player, with one append-only UTF-8 JSONL log and on
 append-only ID/hash/offset index per channel. No key or session token is stored in
 plaintext. Only the small ID index is loaded on first use, then its appended tail.
 Text reads are bounded per record (16 KiB) and page (at most 100 messages). Byte
-cursors follow local delivery order, with each page in forward delivery order.
+cursors follow local delivery order, newest delivery first within every page.
 An interrupted complete log append can repair its missing final index entry.
+The lock publishes a PID/token owner atomically. A killed owner can be recovered without
+removing another live owner. Desktop recovery uses a local PID probe. On mobile/Web,
+an unrelated owner whose liveness cannot be established stays `LOCAL_HISTORY_BUSY`;
+no stale lock is blindly deleted. Desktop native tests do not prove mobile recovery.
 Damaged/locked/unwritable storage reports a local error and never resends a message.
 
 Server eviction, expiry, moderation, epoch changes and revoked membership retain

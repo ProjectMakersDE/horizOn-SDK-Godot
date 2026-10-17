@@ -92,7 +92,7 @@ func run() -> void:
 	await control("shift")
 	await wait_for(func() -> bool: return chat.getCached(C).get("visibleMessageIds", []).size() == 20 and message_id not in chat.getCached(C).visibleMessageIds, "full visible order removes deleted first message")
 	check(chat.getCached(C).messages[-1].text == "plain 20 é😀", "only one unknown payload appended")
-	check(chat.readLocalHistory(C).messages.size() == 21 and chat.readLocalHistory(C).messages[0].id == message_id, "server window eviction retains earlier device copy")
+	check(chat.readLocalHistory(C).messages.size() == 21 and chat.readLocalHistory(C).messages.any(func(row: Dictionary) -> bool: return row.id == message_id), "server window eviction retains earlier device copy")
 	var denied: String = "00000000-0000-4000-8000-000000003015"
 	check(chat.watchChannel(U, denied), "second channel subscription requested")
 	await wait_for(func() -> bool: return not realtime._topics.has("chat:" + denied), "second channel denied on actual socket")

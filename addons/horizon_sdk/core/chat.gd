@@ -55,6 +55,8 @@ func sendMessage(user_id: String, channel_id: String, operation_id: String, issu
 	if result.success:
 		var receipt: Dictionary = result.data.receipt
 		_archive(channel_id, [{"id": receipt.messageId, "channelId": channel_id, "authorId": user_id, "text": text, "createdAt": receipt.createdAt, "expiresAt": receipt.expiresAt}], binding)
+		_syncScope()
+		if binding.is_empty() or binding.scope != _scope: return _fail("STALE_RESPONSE")
 	return result
 func getOperation(user_id: String, operation_id: String) -> Dictionary:
 	if not HorizonChatModels.uuid(operation_id): return _fail("INVALID_REQUEST")
@@ -150,6 +152,8 @@ func requestChannelSnapshot(user_id: String, channel_id: String, epoch: String =
 	for id: String in result.data.visibleMessageIds:
 		if not returned.has(id) and id not in known: return _fail("INVALID_RESPONSE")
 	_archive(channel_id, result.data.messages, binding)
+	_syncScope()
+	if binding.is_empty() or binding.scope != _scope: return _fail("STALE_RESPONSE")
 	return result
 ## Explicit read is allowed only on an acknowledged current subscription, never offline fallback.
 func syncChannel(user_id: String, channel_id: String) -> Dictionary:
@@ -177,6 +181,8 @@ func syncChannel(user_id: String, channel_id: String) -> Dictionary:
 			_cache[channel_id] = complete
 			_record(channel_id, complete)
 			_archive(channel_id, complete.messages, binding)
+			_syncScope()
+			if binding.scope != _scope or not _watches.has(channel_id) or _watches[channel_id].serial != serial or authorization != _watches[channel_id].authorization: return _fail("STALE_RESPONSE")
 			result.data = complete.duplicate(true)
 			channel_changed.emit(channel_id, complete.duplicate(true))
 			_syncScope()

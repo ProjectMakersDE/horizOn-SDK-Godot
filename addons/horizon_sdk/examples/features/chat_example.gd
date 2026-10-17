@@ -94,6 +94,7 @@ func inspect_pending() -> Dictionary:
 	if result.success and result.data.receipt.channelId == intent.channelId and result.data.receipt.issuedAt == intent.issuedAt:
 		var receipt: Dictionary = result.data.receipt
 		h.chat._archive(intent.channelId, [{"id": receipt.messageId, "channelId": intent.channelId, "authorId": intent.userId, "text": intent.text, "createdAt": receipt.createdAt, "expiresAt": receipt.expiresAt}], history_binding)
+		if not _same(h, context): return _fail("STALE_RESPONSE")
 	if result.success and not Pending.confirm(h._http.apiKey, _user(h), intent, result.data.receipt): return _fail("PENDING_STORAGE_ERROR")
 	return result
 func local_history(cursor: String = "") -> Dictionary:

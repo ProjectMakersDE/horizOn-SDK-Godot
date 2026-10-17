@@ -57,7 +57,7 @@ func read_page(channel: String, cursor: String = "", limit: int = 50) -> Diction
 			var raw: String = row_bytes.get_string_from_utf8()
 			var row: Dictionary = HorizonChatModels.parse(raw)
 			if raw.to_utf8_buffer() != row_bytes or row.get("version") != 1 or not _valid(row.get("message"), channel) or state.ids.get(row.message.id) != raw.sha256_text(): file.close(); return _error("LOCAL_HISTORY_DAMAGED")
-			rows.push_front(row.message.duplicate(true))
+			rows.append(row.message.duplicate(true))
 			end = start + boundary + 1
 		if file != null: file.close()
 		return {"success": true, "messages": rows, "nextCursor": generation + ":" + str(end) if end > 0 else ""})
@@ -67,7 +67,7 @@ func clear(channel: String = "") -> Dictionary:
 		var marker: String = _directory.path_join("generation" if channel.is_empty() else channel + ".generation")
 		var stream: FileAccess = FileAccess.open(marker, FileAccess.WRITE)
 		if stream == null: return _error("LOCAL_HISTORY_IO")
-		stream.store_string(str(Time.get_ticks_usec()) + str(randi()))
+		stream.store_string(Crypto.new().generate_random_bytes(16).hex_encode())
 		stream.flush()
 		var error: Error = stream.get_error()
 		stream.close()
@@ -115,9 +115,10 @@ func _open(channel: String) -> Dictionary:
 		var bytes: PackedByteArray = log.get_buffer(size - state.end)
 		log.close(); log = null
 		if bytes[-1] != 10: return _error("LOCAL_HISTORY_DAMAGED")
-		var raw: String = bytes.slice(0, bytes.size() - 1).get_string_from_utf8()
+		var row_bytes: PackedByteArray = bytes.slice(0, bytes.size() - 1)
+		var raw: String = row_bytes.get_string_from_utf8()
 		var row: Dictionary = HorizonChatModels.parse(raw)
-		if row.get("version") != 1 or not _valid(row.get("message"), channel) or state.ids.has(row.message.id): return _error("LOCAL_HISTORY_DAMAGED")
+		if raw.to_utf8_buffer() != row_bytes or row.get("version") != 1 or not _valid(row.get("message"), channel) or state.ids.has(row.message.id): return _error("LOCAL_HISTORY_DAMAGED")
 		var digest: String = raw.sha256_text()
 		var index: PackedByteArray = (row.message.id + " " + digest + " " + str(state.end) + " " + str(bytes.size()) + "\n").to_utf8_buffer()
 		if not _append(index_path, index): return _error("LOCAL_HISTORY_IO")
@@ -143,10 +144,50 @@ func _locked(action: Callable) -> Dictionary:
 	if FileAccess.file_exists(_directory.get_base_dir()): return _error("LOCAL_HISTORY_IO")
 	if DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(_directory)) != OK: return _error("LOCAL_HISTORY_IO")
 	var lock_path: String = ProjectSettings.globalize_path(_directory.path_join(".lock"))
-	if DirAccess.make_dir_absolute(lock_path) != OK: return _error("LOCAL_HISTORY_BUSY")
+	# Publish the owner and lock together. A crash cannot leave an active ownerless lock.
+	var owner: String = "owner.%d.%s" % [OS.get_process_id(), Crypto.new().generate_random_bytes(16).hex_encode()]
+	var claim: String = ProjectSettings.globalize_path(_directory.path_join(".claim." + owner))
+	if DirAccess.make_dir_absolute(claim) != OK: return _error("LOCAL_HISTORY_IO")
+	var file: FileAccess = FileAccess.open(claim.path_join(owner), FileAccess.WRITE)
+	if file == null: DirAccess.remove_absolute(claim); return _error("LOCAL_HISTORY_IO")
+	file.store_string("1"); file.flush()
+	var written: bool = file.get_error() == OK
+	file.close()
+	var acquired: bool = false
+	if written:
+		for attempt: int in 3:
+			if DirAccess.rename_absolute(claim, lock_path) == OK: acquired = true; break
+			var owners: PackedStringArray = DirAccess.get_files_at(lock_path)
+			if owners.is_empty(): DirAccess.remove_absolute(lock_path); continue
+			if owners.size() != 1: break
+			var parts: PackedStringArray = owners[0].split(".")
+			if parts.size() != 3 or parts[0] != "owner" or not parts[1].is_valid_int() or parts[1].to_int() <= 0 or parts[2].length() != 32 or _owner_running(parts[1].to_int()) != 0: break
+			# The token is a compare-and-remove: a competing recovery cannot remove a new owner.
+			if DirAccess.remove_absolute(lock_path.path_join(owners[0])) != OK: break
+			DirAccess.remove_absolute(lock_path) # succeeds only while empty
+	if not acquired:
+		DirAccess.remove_absolute(claim.path_join(owner)); DirAccess.remove_absolute(claim)
+		return _error("LOCAL_HISTORY_BUSY" if written else "LOCAL_HISTORY_IO")
 	var result: Dictionary = action.call()
+	DirAccess.remove_absolute(lock_path.path_join(owner))
 	DirAccess.remove_absolute(lock_path)
 	return result
+static func _owner_running(pid: int) -> int:
+	if pid == OS.get_process_id(): return 1
+	if OS.get_name() == "Windows": return 1 if OS.is_process_running(pid) else 0
+	# Unix Godot's is_process_running uses waitpid, which cannot probe another app instance.
+	# https://github.com/godotengine/godot/blob/master/drivers/unix/os_unix.cpp
+	if OS.get_name() in ["macOS", "Linux", "FreeBSD", "NetBSD", "OpenBSD"]:
+		if not FileAccess.file_exists("/usr/bin/env"): return -1
+		for executable: String in ["/bin/kill", "/usr/bin/kill"]:
+			if not FileAccess.file_exists(executable): continue
+			var output: Array = []
+			var result: int = OS.execute("/usr/bin/env", ["LC_ALL=C", executable, "-0", str(pid)], output, true)
+			if result == 0: return 1
+			# Distinguish missing processes from permission/probe failures. Unknown stays locked.
+			var error: String = "".join(output).to_lower()
+			return 0 if result == 1 and ("no such process" in error or "not found" in error) else -1
+	return -1 # Mobile/Web cannot safely establish an unrelated process's liveness here.
 static func _append(path: String, bytes: PackedByteArray) -> bool:
 	var file: FileAccess = FileAccess.open(path, FileAccess.READ_WRITE if FileAccess.file_exists(path) else FileAccess.WRITE_READ)
 	if file == null: return false
