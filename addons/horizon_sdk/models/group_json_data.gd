@@ -228,6 +228,7 @@ static func extract(json: String) -> Dictionary:
 	return result
 
 static func _sameMetadata(left: String, right: String) -> bool:
+	if left == right: return true
 	var a: Variant = metadataString(left)
 	var b: Variant = metadataString(right)
 	if a is String and b is String: return a == b
