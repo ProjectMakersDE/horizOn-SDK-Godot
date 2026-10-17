@@ -71,8 +71,9 @@ func getDefinitions() -> Dictionary:
 func updateStatistics(updates: Array, operation_id: String) -> Dictionary:
 	_syncScope()
 	if not _hasSession(): return _fail("Player session required", "SESSION_REQUIRED")
-	if _operationRegex.search(operation_id) == null or updates.is_empty() or updates.size() > 100:
-		return _fail("A timestamp:UUID and 1 to 100 updates are required", "INVALID_REQUEST")
+	# Catalog limits belong to the server, including replays after a limit reduction.
+	if _operationRegex.search(operation_id) == null or updates.is_empty():
+		return _fail("A timestamp:UUID and at least one update are required", "INVALID_REQUEST")
 	var keys: Dictionary = {}
 	for update: Variant in updates:
 		if not update is Dictionary or not update.get("key") is String or _keyRegex.search(update["key"]) == null:
@@ -165,7 +166,7 @@ func _acceptCatalog(data: Dictionary) -> bool:
 	var definitions: Variant = data.get("definitions")
 	if definitions == null:
 		return int(version) == _version
-	if not definitions is Array or definitions.size() > 100: return false
+	if not definitions is Array: return false
 	var normalized: Array = definitions.duplicate(true)
 	var keys: Dictionary = {}
 	for definition: Variant in normalized:

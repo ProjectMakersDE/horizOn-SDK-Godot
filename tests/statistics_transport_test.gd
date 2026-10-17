@@ -86,6 +86,18 @@ func _run() -> void:
 	for invalid: Array in [[{"key":"kills","value":1.0}], [{"key":"kills","value":9007199254740992}], [{"key":"kills","value":1},{"key":"kills","value":2}]]:
 		if not (await stats.updateStatistics(invalid,operation)).is_empty() or stats.getLastErrorCode() != "INVALID_REQUEST":
 			_fail("Invalid numbers or duplicate keys must fail locally"); return
+	http.sessionToken = "fresh-session"
+	auth._currentUser.accessToken = "fresh-session"
+	http.apiKey = "project-statistics"
+	var large_batch: Array = []
+	for i: int in range(201): large_batch.append({"key": "stat%d" % i, "value": i})
+	var large_operation: String = stats.createOperationId()
+	var large_result: Dictionary = await stats.updateStatistics(large_batch, large_operation)
+	if large_result.is_empty() or large_result["values"].size() != 201 or stats.getCurrentDefinitions().size() != 201:
+		_fail("Admin-configured catalog above100 must remain usable"); return
+	var reduced_replay: Dictionary = await stats.updateStatistics(large_batch, large_operation)
+	if not reduced_replay.get("replayed", false) or reduced_replay["definitions"].size() != 1:
+		_fail("Original large batch must replay after a catalog reduction"); return
 	http.sessionToken=""
 	if not (await stats.getStatistics()).is_empty() or stats.getLastErrorCode() != "SESSION_REQUIRED":
 		_fail("Missing session must fail locally"); return
