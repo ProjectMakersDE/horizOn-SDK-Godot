@@ -74,7 +74,9 @@ func _initialize() -> void:
 	check(child > 0 and FileAccess.file_exists("user://marketplace-crash-ready"))
 	check(not Pending.acquire_send(PROJECT, USER))
 	check(OS.kill(child) == OK)
-	OS.delay_msec(80)
+	deadline = Time.get_ticks_msec() + 5000
+	while OS.is_process_running(child) and Time.get_ticks_msec() < deadline: OS.delay_msec(20)
+	check(not OS.is_process_running(child))
 	check(Pending.acquire_send(PROJECT, USER))
 	check(Pending.load_pending(PROJECT, USER).pending == pending)
 	Pending.release_send(PROJECT, USER)
