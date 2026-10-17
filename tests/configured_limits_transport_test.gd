@@ -49,6 +49,8 @@ func _run() -> void:
 	lower = await groups.getGroups(U)
 	ok(lower.success and lower.data.groups.size() == 6 and lower.data.limits.maxNameBytes == 1 and lower.data.groups[0].name == group.name)
 	ok((await groups.updateGroup(U,uid(50000),1,group.name,group.description,group.joinMode,group.data)).errorCode == "INVALID_GROUP")
+	var large_group: Dictionary = await groups.getGroup(U,uid(50000))
+	ok(large_group.success and digest(large_group.data.data.getJson().to_utf8_buffer()) == "6b5f2516c8539d8dd0d5b9db33ddff429a982215e84d61167704224f31c26eff")
 	var shared := HorizonSharedObjects.new(); shared.initialize(h._http,h.auth)
 	var catalog: Dictionary = await shared.getCollections(U)
 	ok(catalog.success and catalog.data.limits.collections == 101 and catalog.data.limits.storageBytes == 4294967296 and catalog.data.definitions[0].maxObjectsPerOwner == 101)

@@ -313,7 +313,7 @@ func _jsonValue(value: Variant, depth: int) -> bool:
 ## finite JSON numbers, including keys named revision; do not apply counter rules there.
 func _wire(json: String) -> bool:
 	if not HorizonPlayerValues._safeJsonIntegers(json, []): return false
-	var tokens: RegEx = RegEx.create_from_string('"(?:[^"\\\\]|\\\\.)*"|[{}\\[\\]:,]|true|false|null|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?')
+	var tokens: RegEx = RegEx.create_from_string('"(?:[^"\\\\]++|\\\\.)*+"|[{}\\[\\]:,]|true|false|null|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?')
 	var matches: Array[RegExMatch] = tokens.search_all(json)
 	var stack: Array[bool] = []
 	var data_next: bool = false

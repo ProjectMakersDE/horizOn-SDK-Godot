@@ -56,6 +56,8 @@ add('GET','/api/v1/app/groups/'+G+'/members',members(),query={'userId':[U],'limi
 add('GET','/api/v1/app/groups/'+G+'/pending',pending())
 add('GET','/api/v1/app/groups',groups(True))
 add('PUT','/api/v1/app/groups/'+G,{'code':'INVALID_GROUP'},body='group-original',status=400)
+large_group=group();large_group.update(revision=3,data={'big':'x'*(9*1024*1024),'seed':9007199254740993})
+add('GET','/api/v1/app/groups/'+G,large_group)
 add('GET','/api/v1/app/shared-objects/collections',{'revision':1,'definitions':[definition()],'nextAfterKey':None,'limits':SHARED_CAP,'serverTime':T},query={'userId':[U],'limit':['50']})
 add('GET','/api/v1/app/shared-objects/world/usage',usage())
 add('GET','/api/v1/app/shared-objects/world/objects/'+uid(160000),object_view())

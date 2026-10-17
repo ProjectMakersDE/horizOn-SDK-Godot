@@ -5,6 +5,7 @@ extends RefCounted
 # Godot Variant/JSON engine serialization boundary, not GROUP_DATA_MAX_DEPTH.
 # https://github.com/godotengine/godot/blob/master/core/variant/variant.h
 const ENGINE_JSON_DEPTH: int = 1024
+static var _raw_controls: RegEx = RegEx.create_from_string("[\\x00-\\x1f]")
 var _json: String = ""
 var _bytes: int = 0
 var _comparison: String = ""
@@ -22,9 +23,7 @@ static func fromJson(json: String) -> HorizonGroupJsonData:
 	for token: RegExMatch in tokens:
 		if not _whitespace(json.substr(previous, token.get_start() - previous)): return null
 		var text: String = token.get_string()
-		if text.begins_with('"'):
-			for character: int in range(1, text.length() - 1):
-				if text.unicode_at(character) < 32: return null
+		if text.begins_with('"') and _raw_controls.search(text) != null: return null
 		lexemes.append(text)
 		previous = token.get_end()
 	if not _whitespace(json.substr(previous)): return null
@@ -139,7 +138,7 @@ static func isJsonValue(value: Variant, depth: int) -> bool:
 	return true
 
 static func _tokens() -> RegEx:
-	return RegEx.create_from_string('"(?:[^"\\\\]|\\\\.)*"|[{}\\[\\]:,]|true|false|null|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?')
+	return RegEx.create_from_string('"(?:[^"\\\\]++|\\\\.)*+"|[{}\\[\\]:,]|true|false|null|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?')
 
 ## Match original data to its enclosing GroupView ID, skipping complete inner data
 ## objects so arbitrary nested id/data keys cannot impersonate another GroupView.
