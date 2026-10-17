@@ -430,7 +430,7 @@ if claimed.success:
 | `getInbox(user_id, since="")` | GET snapshot; opaque cursor is used only when its full cache is available |
 | `markRead(user_id, entry_id)` | POST `/inbox/read`; idempotent snapshot |
 | `remove(user_id, entry_id)` | POST `/inbox/remove`; protects unclaimed rewards |
-| `claim(user_id, entry_id)` | POST `/inbox/claim`; `{entryId,replayed,inbox,playerValues}` |
+| `claim(user_id, entry_id)` | POST `/inbox/claim`; `{entryId,replayed,inbox,playerValues,items}` |
 | `getCurrentInbox()`, `clearCache()` | Defensive cache copy; invalidation also fences in-flight replies |
 | `getLastErrorCode()` | Last local/server error code |
 
@@ -443,6 +443,18 @@ An `unchanged` wire response contains no entries; the SDK materializes the compl
 entries. Expiry may change the cursor with the same revision. Overdue unclaimed reward
 entries stay visible and count toward capacity, as determined by the server.
 
+The configurable limits include `targeted`, `broadcasts`, `freeTexts`, `freeTextBytes`
+(UTF-8) and `freeTextRetentionDays`. They govern new writes; retained entries remain
+readable after a limit is lowered. Revisions may jump and stay within the safe integer
+range. Keep entry IDs opaque: a later event from the same source has a different ID.
+
+`HorizonInbox.getSource(entry)` returns typed navigation metadata (`SourceKind`,
+`sourceId` and, where applicable, `userId`, `groupId`, `revision`) for known Friends,
+Groups, Match and Market messages. The source API owns current state and actions.
+Unknown custom/legacy messages retain their original fields. For `isFreeText(entry)`,
+render `getFreeText(entry)` as plain text with rich text disabled; other entries use
+their localization `textKey` and parameters.
+
 Requests serialize, including necessary follow-up reads. Mutations invalidate the old cache;
 session, player, host or project changes fence old/queued responses. Independent revision and
 server-time watermarks survive cache invalidation. JSON integer tokens are checked before
@@ -453,6 +465,11 @@ recipient or new operation ID. The SDK adopts the complete `playerValues` snapsh
 adds attachment values to a local balance. `STATE_CONFLICT` and network errors remain
 explicit; there is no automatic replacement booking. Admin broadcast/support routes stay
 in the Dashboard/MCP, outside the app SDK. See `examples/features/inbox_example.gd`.
+
+`HorizonInbox.canClaim(entry)` includes item-only returns through `attachment.itemReturn`
+(`listingId`, `instanceId`, `itemKey`). Claim `items` contains authoritative references,
+not full item instances; explicitly refresh the inventory after a return. Unsupported
+reward fields, malformed IDs and unsafe numbers reject the response before cache updates.
 
 The Player Values purchase example stores pending intents by **project key + player**.
 Configured legacy regional-host files migrate with the original ID/payload; conflicting IDs
@@ -845,7 +862,7 @@ may overlap other engine test ports and are run serially when sharing a host.
 
 The Inbox example persists one original claim entry ID per project/player before
 HTTP. A new intent requires that exact entry in the current authorized snapshot,
-unclaimed and with nonempty value attachments. An existing identical intent may
+unclaimed and with value rewards or an item-return descriptor. An existing identical intent may
 be retried after timeout even when the entry is already claimed or absent. Another
 pending entry blocks a new claim; corrupt/interrupted storage stays blocked for
 explicit recovery. A regional host change retains the original slot. Only a

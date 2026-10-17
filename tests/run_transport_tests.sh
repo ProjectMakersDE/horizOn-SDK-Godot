@@ -35,7 +35,7 @@ cd "$test_dir"
 "$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/chat_example.gd
 "$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/chat_demo.gd
 # Godot can exit0 after a script parse error; validate the new native gates before execution.
-for items_test in tests/gift_values_transport_test.gd tests/gift_code_transport_test.gd tests/pending_gift_code_test.gd tests/items_transport_test.gd tests/items_policy_test.gd tests/items_example_test.gd tests/shared_objects_transport_test.gd tests/shared_objects_policy_test.gd tests/matches_transport_test.gd tests/matches_policy_test.gd tests/matches_example_test.gd tests/chat_transport_test.gd tests/chat_policy_test.gd tests/chat_snapshot_transport_test.gd; do
+for items_test in tests/inbox_transport_test.gd tests/inbox_policy_test.gd tests/pending_inbox_claim_test.gd tests/gift_values_transport_test.gd tests/gift_code_transport_test.gd tests/pending_gift_code_test.gd tests/items_transport_test.gd tests/items_policy_test.gd tests/items_example_test.gd tests/shared_objects_transport_test.gd tests/shared_objects_policy_test.gd tests/matches_transport_test.gd tests/matches_policy_test.gd tests/matches_example_test.gd tests/chat_transport_test.gd tests/chat_policy_test.gd tests/chat_snapshot_transport_test.gd; do
     "$GODOT_BIN" --headless --path . --check-only --script "$items_test"
 done
 "$GODOT_BIN" --headless --path . --script tests/pending_purchase_test.gd

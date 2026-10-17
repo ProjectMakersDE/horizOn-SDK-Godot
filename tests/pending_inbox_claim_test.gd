@@ -118,6 +118,12 @@ func _run() -> void:
 	corrupt.close()
 	assert((await sample.claim_selected_entry(ENTRY)).errorCode == "PENDING_STORAGE_ERROR" and horizon.inbox.calls.size() == attempts)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(file))
+	# The actual sample admits an item-only return using the same durable original-ID flow.
+	var item: Dictionary = unclaimed.duplicate(true)
+	item.attachment = {"values": [], "itemReturn": {"listingId": USER, "instanceId": USER, "itemKey": "sword"}}
+	horizon.inbox.snapshot = {"userId": USER, "entries": [item]}
+	horizon.inbox.response.data.items = [{"instanceId": USER, "itemKey": "sword"}]
+	assert((await sample.claim_selected_entry(ENTRY)).success and Pending.load_pending(PROJECT, USER).pending.is_empty())
 	sample.free()
 	horizon.free()
 	print("Godot Inbox sample: authorized claimable-entry admission, durable original retry, scope/concurrency/corruption guards and exact confirmation passed")
