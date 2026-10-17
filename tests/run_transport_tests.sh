@@ -35,7 +35,7 @@ cd "$test_dir"
 "$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/chat_example.gd
 "$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/chat_demo.gd
 # Godot can exit0 after a script parse error; validate the new native gates before execution.
-for items_test in tests/group_sample_pages_transport_test.gd tests/configured_limits_policy_test.gd tests/configured_limits_transport_test.gd tests/marketplace_policy_test.gd tests/marketplace_transport_test.gd tests/inbox_transport_test.gd tests/inbox_policy_test.gd tests/pending_inbox_claim_test.gd tests/gift_values_transport_test.gd tests/gift_code_transport_test.gd tests/pending_gift_code_test.gd tests/items_transport_test.gd tests/items_policy_test.gd tests/items_example_test.gd tests/shared_objects_transport_test.gd tests/shared_objects_policy_test.gd tests/matches_transport_test.gd tests/matches_policy_test.gd tests/matches_example_test.gd tests/chat_transport_test.gd tests/chat_policy_test.gd tests/chat_snapshot_transport_test.gd; do
+for items_test in tests/groups_metadata_transport_test.gd tests/group_sample_pages_transport_test.gd tests/configured_limits_policy_test.gd tests/configured_limits_transport_test.gd tests/marketplace_policy_test.gd tests/marketplace_transport_test.gd tests/inbox_transport_test.gd tests/inbox_policy_test.gd tests/pending_inbox_claim_test.gd tests/gift_values_transport_test.gd tests/gift_code_transport_test.gd tests/pending_gift_code_test.gd tests/items_transport_test.gd tests/items_policy_test.gd tests/items_example_test.gd tests/shared_objects_transport_test.gd tests/shared_objects_policy_test.gd tests/matches_transport_test.gd tests/matches_policy_test.gd tests/matches_example_test.gd tests/chat_transport_test.gd tests/chat_policy_test.gd tests/chat_snapshot_transport_test.gd; do
     "$GODOT_BIN" --headless --path . --check-only --script "$items_test"
 done
 "$GODOT_BIN" --headless --path . --script tests/pending_purchase_test.gd
@@ -86,8 +86,14 @@ if [[ "${HORIZON_CHAT_ONLY:-0}" == "1" ]]; then
     exit 0
 fi
 
+if [[ "${HORIZON_GROUP_METADATA_ONLY:-0}" == "1" ]]; then
+    run_contract tests/mock_groups_metadata_server.py tests/groups_metadata_transport_test.gd
+    exit 0
+fi
+
 if [[ "${HORIZON_GROUP_SAMPLE_ONLY:-0}" == "1" ]]; then
     run_contract tests/mock_group_sample_pages_server.py tests/group_sample_pages_transport_test.gd
+    run_contract tests/mock_groups_metadata_server.py tests/groups_metadata_transport_test.gd
     exit 0
 fi
 
@@ -113,6 +119,7 @@ run_contract tests/mock_inbox_server.py tests/inbox_transport_test.gd
 run_contract tests/mock_achievements_server.py tests/achievements_transport_test.gd
 run_contract tests/mock_friends_server.py tests/friends_transport_test.gd
 run_contract tests/mock_groups_server.py tests/groups_transport_test.gd
+run_contract tests/mock_groups_metadata_server.py tests/groups_metadata_transport_test.gd
 run_contract tests/mock_items_server.py tests/items_transport_test.gd
 run_contract tests/mock_marketplace_server.py tests/marketplace_transport_test.gd
 run_contract tests/mock_shared_objects_server.py tests/shared_objects_transport_test.gd

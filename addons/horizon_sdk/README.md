@@ -599,9 +599,11 @@ if own.success:
 
 `createGroup(user,expected_player_revision,name,description="",join_mode="open",data={})`
 accepts no caller group ID. `updateGroup(user,group,expected_revision,name,description,join_mode,data)`
-replaces every metadata field. Both use JSON objects (including empty `{}`), finite
-numbers, depth16 and at most2048 serialized UTF-8 bytes; names120/description1024
-UTF-8 bytes. Dotted, empty and dollar-prefixed data keys and decimal data fields
+replaces every metadata field. Both use JSON objects (including empty `{}`) and finite
+numbers. Current name, description, data-byte and data-depth policies are server
+System Config values; old120/1024/2048-byte and depth16 defaults are not SDK ceilings.
+Godot's independent JSON/Variant serialization boundary is1024 nested containers.
+Dotted, empty and dollar-prefixed data keys and decimal data fields
 remain legal. `GroupView.data` is a `HorizonGroupJsonData` value containing original
 JSON text, including large integers and high-precision number lexemes; only
 insignificant whitespace outside string values is removed. Pass that
@@ -610,7 +612,8 @@ lossless; `getPreview()` creates a fresh display dictionary using Godot numbers 
 may round values, so never use that preview for an unchanged roundtrip. Create/update
 accept either a new Dictionary (serialized once at full engine precision) or
 `HorizonGroupJsonData.fromJson(original_json)`. The wrapper has no public mutation
-method; invalid JSON/duplicate keys/size/depth/nonfinite values are rejected. Protocol revisions/counts require exact safe integer wire lexemes.
+method; invalid JSON, duplicate keys, engine-depth overflow and nonfinite values are rejected.
+Protocol revisions/counts require exact safe integer wire lexemes.
 
 All fourteen actions begin `(user_id,group_id,expected_revision)`:
 
@@ -634,8 +637,13 @@ advance freshness floors. Project/host/session ABA, queued work, signout and
 synchronous callbacks fence old responses. Detail freshness memory is bounded48
 records; own-player revision/server-time floors survive explicit cache clears.
 
-Global retained maxima500 members/5 memberships and20 invitations/requests remain
-readable after a smaller tier is applied. Server limits and role/block checks are
+All eleven `limits` fields are positive Int32 System Config values:
+`maxMembers`, `maxGroupsPerPlayer`, `maxInvitations`, `maxJoinRequests`, `maxDataBytes`,
+`memberPageSize`, `maxPlayerInvitations`, `maxPlayerRequests`, `maxNameBytes`,
+`maxDescriptionBytes`, `maxDataDepth`. Retained memberships and pending lists are
+read completely after lowering policy. Legacy pending `createdAt` is nullable or absent.
+An explicit member-page limit follows current server policy;50 is a request default.
+Server limits and role/block checks are
 authoritative. A full Inbox error stays atomic at the server and is returned for an
 explicit UI decision. Sole-leader deletion cannot dismantle a nonempty group;
 transfer leadership before leaving. No group currency, hidden reads or admin write
@@ -662,3 +670,5 @@ read and reconcile uncertainty explicitly. Player Values offers/receipts add
 before HTTP and fetch inventory explicitly after success. The executable
 `examples/features/items_example.gd` and the repository README describe durable
 recovery, strict integer/canonical property limits and lossless NUL-string values.
+
+Only NUL-containing Groups `name`/`description` values use the existing `HorizonItemStringData` carrier; ordinary strings and the typed `updateGroup(...,name:String,description:String,...)` signature stay unchanged. Display with `getDisplayPreview()`; never roundtrip that preview. `GroupView.nameJson`/`descriptionJson` retain the complete original JSON string tokens. Persist those token strings, the reviewed revision and original data JSON, then explicitly call `updateGroupOriginalMetadata(user,group,revision,nameJson,descriptionJson,mode,data)` for a lossless metadata edit/retry. The typed String API rejects a carrier instead of silently writing a replacement character. The helper sends one attempt and never changes the saved revision or tokens. Groups tokenizes complete received strings without PCRE's fixed match budget; metadata writes strictly escape control characters.
