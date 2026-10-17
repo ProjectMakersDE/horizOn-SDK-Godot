@@ -1543,3 +1543,5 @@ authenticated context, including201 distinct pending runs. Auth changes clear
 this local map; there is no128-source eviction and no copied historical state,
 items or rewards. Its local memory may grow across reads, separate from server
 storage and the size of any single response frame.
+
+Group revision floors likewise retain only minimal IDs and revisions until auth changes, including257 retained groups after policy is lowered to1. They hold no copied group content.

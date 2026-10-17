@@ -165,7 +165,6 @@ func _call(user_id: String, kind: String, group_id: String = "", payload: Dictio
 			result = _fail(_lastErrorCode)
 		else:
 			_floors = _staged.duplicate()
-			while _floors.size() > 48: _floors.erase(_floors.keys()[0])
 			var own: Dictionary = data.groups if mutation else data
 			if mutation or kind == "mine":
 				_current = own.duplicate(true)

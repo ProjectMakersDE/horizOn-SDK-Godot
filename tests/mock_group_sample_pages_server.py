@@ -7,8 +7,10 @@ from mock_http import send_json
 U='00000000-0000-4000-8000-000000001016';G='00000000-0000-4000-8000-000000050000';P='00000000-0000-4000-8000-000000060000';T='2026-10-18T00:00:00Z'
 L=dict(maxMembers=501,maxGroupsPerPlayer=6,maxInvitations=21,maxJoinRequests=21,maxDataBytes=8192,memberPageSize=51,maxPlayerInvitations=21,maxPlayerRequests=21,maxNameBytes=512,maxDescriptionBytes=4096,maxDataDepth=64)
 def own(size):return dict(userId=U,revision=1,groups=[],incomingInvites=[],outgoingRequests=[],limits=dict(L,memberPageSize=size),serverTime=T)
-def page(user=U,cursor=U):return dict(groupId=G,revision=1,members=[dict(userId=user,role='member',joinedAt=T,display=dict(name=None,profile=dict(avatarId=None,frameId=None,badges=[])))],nextAfterUserId=cursor,serverTime=T)
-CASES=[('',{},own(51),200),('/'+G+'/members',{'limit':['51']},page(),200),('',{},own(1),200),('/'+G+'/members',{'limit':['1']},page(),200),('/'+G+'/members',{'limit':['1'],'afterUserId':[U]},page(P,None),200),('/'+G+'/members',{'limit':['7']},{'code':'INVALID_PAGE'},400)]
+def page(user=U,cursor=U,count=1):
+ users=['00000000-0000-4000-8000-%012d'%n for n in range(1017-count,1017)]if count>1 else[user]
+ return dict(groupId=G,revision=1,members=[dict(userId=value,role='member',joinedAt=T,display=dict(name=None,profile=dict(avatarId=None,frameId=None,badges=[])))for value in users],nextAfterUserId=cursor,serverTime=T)
+CASES=[('',{},own(51),200),('/'+G+'/members',{'limit':['51']},page(count=51),200),('',{},own(1),200),('/'+G+'/members',{'limit':['1']},page(),200),('/'+G+'/members',{'limit':['1'],'afterUserId':[U]},page(P,None),200),('/'+G+'/members',{'limit':['7']},{'code':'INVALID_PAGE'},400)]
 class Handler(BaseHTTPRequestHandler):
  index=0;failure=None
  def log_message(self,*_):pass
