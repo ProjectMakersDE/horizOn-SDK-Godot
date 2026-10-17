@@ -802,6 +802,15 @@ if not result.success:
 
 Retain the same operation ID and payload for retries after a timeout. Never generate another ID automatically after `OPERATION_EXPIRED`; refresh and reconcile first. IDs use learned server time plus monotonic elapsed time; local UTC is the fallback before loading state/offers (`hasServerClock() == false`). Amounts must be Godot `int` values within +/-9,007,199,254,740,991; float inputs and unsafe numeric response tokens are rejected. Values/costs/deltas return as int64 and nullable daily caps remain null (zero is a real cap). Cache getters return deep copies, revision/time watermarks survive catalogue invalidation and `clearCache()` rejects earlier in-flight requests. Session/project/host changes discard old state. Realtime is optional: refresh HTTP state after a validated run or another balance mutation. No automatic purchase/poll loop exists.
 
+Current server configuration is authoritative; the SDK does not clamp balance or
+offer lists to tariff defaults. Existing balances and earned totals remain readable
+after a daily cap is lowered. Compact purchase replay returns the current snapshot
+and original operation ID with `replayed:true`, `applied:[]` and `items:[]`; replace
+cached balances rather than reconstructing historical deltas or item grants.
+Offer-day quotas are absent (`purchasesPerDay` may be omitted/null). Keep the exact
+original operation ID for uncertain retries and explicitly refresh inventory after
+confirmation. No local debit, grant or replacement purchase is inferred from replay.
+
 ### Statistics sample recovery
 
 The minimal `examples/features/statistics_example.gd` keeps its original binary
@@ -1069,8 +1078,8 @@ Player Values offers add `itemRewards:[{itemKey,quantity}]`; operation receipts 
 purchase retains the same durably saved original `unixMillis:UUID` and unchanged
 offer key across retries. It replaces the complete authoritative Player Values
 state and invalidates the inventory cache without fetching or synthesizing items.
-Explicitly fetch inventory after success. A replay may refer to an already
-discarded item; never buy again or recreate it to repair a missing refresh.
+Explicitly fetch inventory after success. Compact replay has empty historical `applied`/`items` and current balances; never
+buy again or recreate discarded/transferred items to repair a missing refresh.
 The server-only GrantProvider owns creation and the atomic balance/inventory/
 receipt transaction; the SDK exposes no grant endpoint. Quantities are distinct
 item keys with total1..4. Countable currency stays in Player Values; cosmetics

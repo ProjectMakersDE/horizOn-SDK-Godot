@@ -20,7 +20,23 @@ EXPECTED=[GET(state(10)),OFFER(1,11),
  ("POST",ROOT+"/purchase",None,{"userId":USER,"offerKey":"energy-pack","operationId":OP},409,{"code":"OPERATION_EXPIRED","message":"Expired","state":state(11,1,12)}),
  ("POST",ROOT+"/adjust",None,{"userId":USER,"key":"gold","amount":-9007199254740991,"reason":"debug","operationId":OP.replace("1004","1005")},200,state(12,1,13)),
  GET(state(13,1,14)),GET(state(11,1,15)),OFFER(2,16),GET(state(11,2,17)),GET(state(14,2,14)),GET(state(14,2,18)),GET(state(15,2,19))]
-DELAYS={4:.15,10:.15}
+def expanded_state(revision, definition, second, gold=100, energy=0, capped=False):
+ value=state(revision,definition,second)
+ value["values"][0].update(balance=gold,earnedToday=50 if capped else 0,dailyCap=0 if capped else None)
+ value["values"][1]["balance"]=energy
+ value["values"] += [{"key":f"value_{i}","balance":i,"earnedToday":0,"dailyCap":None} for i in range(78)]
+ return value
+def expanded_offers():
+ value=offers(3,19);value["definitions"]=expanded_state(15,3,20)["values"]
+ value["offers"]=[{"key":"energy-pack" if i==0 else f"offer_{i}","name":"Configured offer","active":True,"costs":[{"key":"gold","amount":1}],"rewards":[{"key":"energy","amount":1}]} for i in range(1201)]
+ return value
+compact_op=OP.replace("1004","1006")
+fresh=expanded_state(16,3,21,99,1);fresh["operation"]={"operationId":compact_op,"replayed":False,"applied":[{"key":"gold","amount":-1},{"key":"energy","amount":1}],"items":[]}
+replay=expanded_state(17,4,22,33,9,True);replay["operation"]={"operationId":compact_op,"replayed":True,"applied":[],"items":[]}
+EXPECTED=EXPECTED[:-1]+[("GET",ROOT+"/offers",{"userId":[USER]},None,200,expanded_offers()),GET(expanded_state(15,3,20)),
+ ("POST",ROOT+"/purchase",None,{"userId":USER,"offerKey":"energy-pack","operationId":compact_op},200,fresh),
+ ("POST",ROOT+"/purchase",None,{"userId":USER,"offerKey":"energy-pack","operationId":compact_op},200,replay),GET(expanded_state(18,4,23,33,9,True))]
+DELAYS={4:.15,len(EXPECTED)-1:.15}
 class ContractHandler(BaseHTTPRequestHandler):
     requests_seen = 0
     failure = None
