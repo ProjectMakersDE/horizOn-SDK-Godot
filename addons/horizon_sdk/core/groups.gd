@@ -360,10 +360,10 @@ func _wire(json: String) -> bool:
 			containers.pop_back()
 			stack.pop_back()
 		elif text.begins_with('"') and index + 1 < matches.size() and matches[index + 1].get_string() == ":":
-			var key: Variant = JSON.parse_string(text)
+			var key: Variant = HorizonGroupJsonData._canonicalString(text)
 			if not key is String or containers.is_empty() or not containers.back() is Dictionary or containers.back().has(key): return false
 			containers.back()[key] = true
-			data_next = key == "data"
+			data_next = key == '"data"'
 		elif text not in [":", ","]:
 			if not text.begins_with('"') and text not in ["true", "false", "null"] and not (data_next or (not stack.is_empty() and stack.back())):
 				if not text.is_valid_int() or text.length() > 17 or not HorizonPlayerValues._safeNumber(int(text)): return false

@@ -90,6 +90,13 @@ func _run() -> void:
 	http.responses = [{"data": exact, "raw": raw}]
 	var restored: Dictionary = await groups.getGroup(USER, GROUP)
 	assert(restored.success and restored.data.data.getJson() == original_data)
+	var nul_row: Dictionary = _group(1)
+	nul_row.data = JSON.parse_string(nul_keys)
+	var nul_wire: String = JSON.stringify(nul_row).replace(JSON.stringify(nul_row.data), nul_keys)
+	http.responses = [{"data": nul_row, "raw": nul_wire}]
+	var nul_read: Dictionary = await groups.getGroup(USER, GROUP)
+	assert(nul_read.success and nul_read.data.data.getJson() == nul_keys, "The actual Groups wire guard preserves distinct original NUL/replacement keys")
+
 	var preview: Dictionary = restored.data.data.getPreview()
 	preview.seed = 0
 	assert(restored.data.data.getJson() == original_data and not groups.getCurrentGroups().groups[0].data.getPreview().is_empty())
