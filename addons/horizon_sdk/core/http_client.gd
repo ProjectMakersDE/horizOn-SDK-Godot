@@ -504,6 +504,9 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 		var parsed: Variant = null
 		if trimmed.is_empty():
 			parsed = {}
+		elif endpoint.get_slice("?", 0).begins_with("/api/v1/app/marketplace"):
+			# Escrow property tokens, including NUL, remain exact for observers as well as the feature.
+			parsed = HorizonMarketplaceModels.parse(trimmed)
 		elif endpoint.get_slice("?", 0).begins_with("/api/v1/app/shared-objects/"):
 			parsed = HorizonSharedObjectModels.parse(trimmed)
 		elif endpoint.get_slice("?", 0) in ["/api/v1/app/items", "/api/v1/app/items/catalog", "/api/v1/app/items/adjust", "/api/v1/app/items/equip", "/api/v1/app/items/discard"]:

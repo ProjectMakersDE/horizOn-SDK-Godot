@@ -2,6 +2,7 @@ extends Node
 ## Explicit two-player UI actions only. Configure the stable project UUID; never embed an admin key.
 const Models = preload("res://addons/horizon_sdk/models/marketplace_models.gd")
 const Pending = preload("res://addons/horizon_sdk/examples/features/pending_marketplace.gd")
+const Operation = preload("res://addons/horizon_sdk/examples/features/marketplace_operation.gd")
 @export var project_id: String = ""
 var _review: Dictionary = {}
 var _busy: bool = false
@@ -65,26 +66,11 @@ func confirm_reviewed_trade() -> Dictionary:
 	var h: Node = _authorized()
 	if h == null: return _failure("SESSION_REQUIRED")
 	if _busy or _review.is_empty() or _review.context != _context(h): return _failure("REVIEW_REQUIRED")
-	var user: String = _user(h)
-	var project: String = project_id
-	if not Pending.acquire_send(project, user): return _failure("PENDING_STORAGE_BUSY")
 	_busy = true
-	var result: Dictionary = await _prepare_and_apply(h)
+	var result: Dictionary = await Operation.run(h, project_id, _user(h), weakref(self), _review.duplicate(true), false)
 	_busy = false
-	Pending.release_send(project, user)
+	if result.success: _review.clear()
 	return result
-func _prepare_and_apply(h: Node) -> Dictionary:
-	var user: String = _user(h)
-	var loaded: Dictionary = Pending.load_pending(project_id, user)
-	if not loaded.success: return _failure("PENDING_STORAGE_ERROR")
-	if not loaded.pending.is_empty(): return _failure("PENDING_OPERATION")
-	var server_now: int = h.marketplace.getServerNow()
-	if server_now < 0: return _failure("REVIEW_REQUIRED")
-	var body: Dictionary = _review.terms.duplicate(true)
-	body.merge({"userId": user, "operationId": Models.new_uuid(), "issuedAt": Models.timestamp(server_now)})
-	var pending: Dictionary = {"scope": JSON.stringify([project_id, user]).sha256_text(), "kind": _review.kind, "listingId": _review.listingId, "body": body, "phase": "intent"}
-	if not Pending.store(project_id, user, pending): return _failure("PENDING_STORAGE_ERROR")
-	return await _apply(h, pending, false)
 
 ## Restart/host changes preserve the original tuple. Confirmed originals perform GETs only.
 func retry_pending() -> Dictionary: return await _resume(false)
@@ -93,43 +79,11 @@ func _resume(lookup_only: bool) -> Dictionary:
 	var h: Node = _authorized()
 	if h == null: return _failure("SESSION_REQUIRED")
 	if _busy: return _failure("BUSY")
-	var user: String = _user(h)
-	var project: String = project_id
-	if not Pending.acquire_send(project, user): return _failure("PENDING_STORAGE_BUSY")
 	_busy = true
-	var loaded: Dictionary = Pending.load_pending(project_id, user)
-	var result: Dictionary = _failure("PENDING_STORAGE_ERROR")
-	if loaded.success:
-		result = _failure("NO_PENDING_OPERATION") if loaded.pending.is_empty() else await _apply(h, loaded.pending, lookup_only)
+	var result: Dictionary = await Operation.run(h, project_id, _user(h), weakref(self), {}, lookup_only)
 	_busy = false
-	Pending.release_send(project, user)
+	if result.success: _review.clear()
 	return result
-func _apply(h: Node, pending: Dictionary, lookup_only: bool) -> Dictionary:
-	var context: String = _context(h)
-	var user: String = pending.body.userId
-	if pending.phase == "intent":
-		var result: Dictionary = await h.marketplace.getOperation(user, pending.body.operationId) if lookup_only else await h.marketplace.submitIntent(pending.kind, pending.body, pending.listingId)
-		if not _same(h, context): return _failure("STALE_RESPONSE")
-		if not result.success: return result #404/expired/conflict never becomes a replacement trade.
-		var receipt: Dictionary = result.data.receipt
-		if not Models.matches_receipt(receipt, pending.kind, pending.body, pending.listingId): return _failure("INVALID_RESPONSE")
-		var confirmed: Dictionary = pending.duplicate(true)
-		confirmed.phase = "confirmed"
-		confirmed.confirmed = {"kind": receipt.kind, "operationId": receipt.operationId, "listingId": receipt.listingId}
-		if not Pending.store(project_id, user, confirmed, pending): return _failure("PENDING_STORAGE_ERROR")
-		pending = confirmed
-	var inventory: Dictionary = await h.items.getInventory(user)
-	if not _same(h, context): return _failure("STALE_RESPONSE")
-	if not inventory.success: return inventory
-	var values: Dictionary = await h.playerValues.getState(user)
-	if not _same(h, context): return _failure("STALE_RESPONSE")
-	if not values.success: return values
-	var market: Dictionary = await h.marketplace.getMarketplace(user)
-	if not _same(h, context): return _failure("STALE_RESPONSE")
-	if not market.success: return market
-	if not Pending.confirm(project_id, user, pending): return _failure("PENDING_STORAGE_ERROR")
-	_review.clear()
-	return {"success": true, "data": {"confirmed": pending.confirmed.duplicate(), "inventory": inventory.data, "playerValues": values.state, "marketplace": market.data.state}, "errorCode": "", "error": ""}
 func retry_return_delivery(listing_id: String) -> Dictionary:
 	var h: Node = _authorized()
 	return await h.marketplace.retryReturn(_user(h), listing_id) if h != null else _failure("SESSION_REQUIRED")

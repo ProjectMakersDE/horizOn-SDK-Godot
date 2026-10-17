@@ -89,6 +89,7 @@ func _run() -> void:
 	var point: Dictionary = await sample.read_listing(LISTING)
 	check(point.success and point.data.listing.item.instanceId == INSTANCE)
 	var original: Dictionary = point.data.listing.item.duplicate(true)
+	check(original.properties.label is HorizonItemStringData and original.properties.label.getJson() == '"雪/😀\\u0000tail"' and original.properties.power == 9007199254740991)
 	check((await sample.read_inventory()).data.instances[0].instanceId == INSTANCE)
 	check((await sample.read_rules_page()).success)
 	var quote: Dictionary = sample.review_create(INSTANCE, 101, 300)
