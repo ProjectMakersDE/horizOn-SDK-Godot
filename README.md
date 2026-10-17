@@ -1537,3 +1537,9 @@ Read own Groups first; missing or stale auth-context limits cause no member requ
 A changed default size restarts from the first page and returns `restarted: true`.
 An explicit third argument stays unchanged on the wire. A continuation without a
 known original page or with a changed revision requires an explicit page restart.
+
+Minimal Match/final-revision→run-ID bindings are retained through the current
+authenticated context, including201 distinct pending runs. Auth changes clear
+this local map; there is no128-source eviction and no copied historical state,
+items or rewards. Its local memory may grow across reads, separate from server
+storage and the size of any single response frame.

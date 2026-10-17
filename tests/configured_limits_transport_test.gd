@@ -65,6 +65,7 @@ func _run() -> void:
 	ok(limits.success and limits.data.limits.retainedMatches == 0 and limits.data.limits.historyRetentionSeconds == 0 and limits.data.limits.stateBytes == 14648*1024)
 	var ledger: Dictionary = await h.matches.getMatches(U)
 	ok(ledger.success and ledger.data.active.size() == 11 and ledger.data.invites.size() == 21 and ledger.data.recent.size() == 101 and ledger.data.pendingResults.size() == 201)
+	ok(ledger.data.pendingResults[200].ownRankedRunId == uid(500200))
 	var point: Dictionary = await h.matches.getMatch(U,uid(180000))
 	ok(point.success and point.data.match.data.size() == 14648*1024 and digest(point.data.match.data) == "d12011f3d43c3012b201dd6ea5c40c1e421ad4f6a35e2ce2a5eb8f88899f2fe2")
 	var sample := Sample.new(); root.add_child(sample)
@@ -83,6 +84,7 @@ func _run() -> void:
 	var saved: Dictionary = Pending.load_pending(file).pending
 	ok(saved.matchId == uid(210000) and saved.expectedRevision == 5 and saved.bodyJson == '{"finalStateRevision":5}')
 	sample.free(); sample = Sample.new(); root.add_child(sample)
+	ok((await sample.retry_original_report_or_run()).errorCode == "STALE_RESPONSE" and Pending.load_pending(file).pending == saved and h.validatedActions.getCurrentRun().is_empty())
 	ok((await sample.retry_original_report_or_run()).success and h.validatedActions.getCurrentRun().runId == RUN)
 	ok(Pending.load_pending(file).pending.is_empty())
 	var chat := HorizonChat.new(); h.add_child(chat); chat.initialize(h._http,h.auth,realtime)
