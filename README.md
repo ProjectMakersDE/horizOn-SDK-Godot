@@ -1443,3 +1443,54 @@ authenticated offline reads are allowed. Logout and project/player changes remov
 access in memory. Captured request identity and persistent clear generations fence
 late replies. Clear invalidates prior page cursors. A new device has no old archive,
 and the SDK neither uploads it nor uses Cloud Save. There is no implicit local cap.
+
+## Marketplace: original escrow and recoverable actions
+
+`Horizon.marketplace` provides the ten App routes: `getLimits`, `getRules`,
+`getMarketplace`, `queryListings`, `getListing`, `createListing`, `buyListing`,
+`cancelListing`, `getOperation` and `retryReturn`; `submitIntent` restores the
+same prepared tuple. Calls require the current player Bearer and project key.
+There is no implicit signup, polling, pagination or write retry. Rule/query pages
+are explicit (1–50 rows) with the original revision or opaque continuation cursor.
+
+Five operator quotas are positive Int32 values, independent of old tariff
+assumptions and retained state. Lowering a quota never truncates existing open
+listings/history references. The Marketplace parser reuses the lossless Items
+JSON grammar with its technical depth limit of 16, without a fixed list-count
+or feature-specific response-byte quota. This is not a claim about physical
+MongoDB storage. Item properties keep exact safe integers and original creation
+times. Godot cannot represent NUL in String: only such property values use the
+existing immutable `HorizonItemStringData` (`getJson`, `getDisplayPreview`), so
+neither the feature nor HTTP response observers replace original code points.
+
+Add `examples/features/marketplace_example.gd` to the game's marketplace screen
+and set its real stable `project_id`. Read current config/rules/inventory for
+`review_create`, or a current point listing for `review_buy`/`review_cancel`.
+Show the reviewed price, fee and seller net before the explicit confirmation
+calls `confirm_reviewed_trade`. `marketplace_quickstart.gd` demonstrates one
+listing read and a confirmed buy through this actual sample, without another
+journal implementation.
+
+The sample flushes and reads back one original per project/player before the
+single POST. Its asynchronous send lease outlives a disposable screen. Known
+successful identity is saved before current Inventory, Player Values and
+Marketplace GETs. Only when all succeed is this one original removed; there is
+no completed-purchase or copied-item/result archive. A confirmed restart uses
+GETs only. After uncertainty choose `retry_pending` or the read-only
+`recover_original_operation`. A 404, expiry, changed policy or later terminal
+listing never authorizes replacement identity or a synthetic item grant.
+
+Desktop leases publish PID/token owners atomically and only recover a proven
+dead process. Live/unknown owners remain busy; mobile/Web cannot automatically
+establish unrelated process liveness. Partial `.next` files block writes and
+must be preserved for recovery. Deleting unknown originals or lock files to
+permit another trade is unsafe. These sample files are local device recovery,
+not player purchase history uploaded to the backend.
+
+`retry_return_delivery` retains the same listing source; `claim_return` delegates
+the same original entry to Inbox. `INBOX_FULL` and `INVENTORY_FULL` are recoverable.
+A replay after resale/discard provides references without recreating inventory.
+The complete native transport gate includes all ten real HTTP routes, more than
+2,048 retained open listings after quota lowering, original bytes on retry,
+known-result restart and original escrow claim/discard/replay. Its artificial
+loopback fixture is not evidence of a hosted deployment or an exported Web game.

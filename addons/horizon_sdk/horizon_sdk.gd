@@ -59,6 +59,7 @@ var sharedObjects: HorizonSharedObjects
 var matches: HorizonMatches
 var chat: HorizonChat
 var items: HorizonItems
+var marketplace: HorizonMarketplace
 var groups: HorizonGroups
 var friends: HorizonFriends
 var validatedActions: HorizonValidatedActions
@@ -186,6 +187,8 @@ func _initializeManagers() -> void:
 	chat.initialize(_http, auth, realtime)
 	items = HorizonItems.new()
 	items.initialize(_http, auth, playerValues)
+	marketplace = HorizonMarketplace.new()
+	marketplace.initialize(_http, auth)
 	groups = HorizonGroups.new()
 	groups.initialize(_http, auth)
 	friends = HorizonFriends.new()
