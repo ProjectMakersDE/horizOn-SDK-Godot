@@ -220,8 +220,6 @@ static func getSource(entry: Dictionary) -> Dictionary:
 		if not _uuid(parameters.get("groupId")):
 			return {}
 		result.groupId = String(parameters.groupId).to_lower()
-		if kind in [SourceKind.GROUP_INVITATION_ACCEPTED, SourceKind.GROUP_REQUEST_ACCEPTED] and result.groupId != result.sourceId:
-			return {}
 	elif kind == SourceKind.MATCH_TURN:
 		var revision: Variant = parameters.get("revision")
 		if not _uuid(parameters.get("matchId")) or String(parameters.matchId).to_lower() != result.sourceId or not revision is String or not revision.is_valid_int() or revision.begins_with("+") or revision.length() > 16 or not _nonnegative(int(revision)):

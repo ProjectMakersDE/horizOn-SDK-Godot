@@ -213,6 +213,9 @@ func _compactContracts(inbox: HorizonInbox) -> bool:
 		entry.reference = "bad"
 		if not inbox._normalize(snapshot, USER, "").is_empty():
 			return false
+	entry.merge({"type": "group_accept-invite", "textKey": "horizon.groups.accept-invite", "reference": "00000000-0000-4000-8000-000000001007", "parameters": {"groupId": USER}}, true)
+	if inbox._normalize(snapshot, USER, "").is_empty() or HorizonInbox.getSource(entry).get("groupId") != USER:
+		return false
 	entry.merge({"type": "marketplace", "textKey": "marketplace.item_return", "reference": USER, "parameters": {}, "attachment": {"values": [], "itemReturn": {"listingId": USER, "instanceId": USER, "itemKey": "sword"}}}, true)
 	if inbox._normalize(snapshot, USER, "").is_empty() or not HorizonInbox.canClaim(entry) or HorizonInbox.getSource(entry).get("kind") != HorizonInbox.SourceKind.MARKET_RETURN:
 		return false
