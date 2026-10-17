@@ -38,6 +38,7 @@ func _run() -> void:
 	var e: String = "00000000-0000-4000-8000-000000600000"
 	var name: String = "a" + String.chr(1).repeat(6*1024*1024)
 	var large: Dictionary = await h.groups.getGroup(U,e)
+	print("Escaped Group read: success=%s code=%s" % [large.success,large.get("errorCode","")])
 	check(large.success and large.data.name == name)
 	var original: Dictionary = {"expectedRevision":1,"name":name,"description":"","joinMode":"open","data":{}}
 	var path: String = "user://groups-escaped-original.bin"

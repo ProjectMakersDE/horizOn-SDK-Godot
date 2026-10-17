@@ -138,7 +138,7 @@ static func isJsonValue(value: Variant, depth: int) -> bool:
 	return true
 
 static func _tokens() -> RegEx:
-	return RegEx.create_from_string('"(?:[^"\\\\]++|\\\\.)*+"|[{}\\[\\]:,]|true|false|null|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?')
+	return RegEx.create_from_string('"(?:[^"\\\\]++|(?:\\\\(?:u[0-9a-fA-F]{4}|.))++)*+"|[{}\\[\\]:,]|true|false|null|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?')
 
 ## Match original data to its enclosing GroupView ID, skipping complete inner data
 ## objects so arbitrary nested id/data keys cannot impersonate another GroupView.

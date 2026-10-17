@@ -265,7 +265,7 @@ static func _safeJsonIntegers(json: String, fields: Array[String] = ["balance", 
 	# Tokenize whole JSON strings, so escaped keys are decoded and opaque giftData stays opaque.
 	# Track objects independently to reject duplicate decoded names without confusing array entries.
 	var tokens: RegEx = RegEx.new()
-	tokens.compile('"(?:[^"\\\\]++|\\\\.)*+"|[{}\\[\\]:,]|true|false|null|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?')
+	tokens.compile('"(?:[^"\\\\]++|(?:\\\\(?:u[0-9a-fA-F]{4}|.))++)*+"|[{}\\[\\]:,]|true|false|null|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?')
 	var matches: Array[RegExMatch] = tokens.search_all(json)
 	var containers: Array = []
 	var integer: RegEx = RegEx.create_from_string("^-?(0|[1-9][0-9]*)\\z")

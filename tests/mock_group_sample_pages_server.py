@@ -38,7 +38,8 @@ class Handler(BaseHTTPRequestHandler):
    encoded=json.dumps(body).encode()
    if at>=6:print('Escaped response case%d: %d UTF8 bytes'%(at,len(encoded)),flush=True)
    type(self).index+=1
-  except Exception as error:type(self).failure=str(error);body,status={'code':'FIXTURE_REJECTED'},422
+  except Exception as error:
+   type(self).failure=str(error);print('FIXTURE_REJECTED:',str(error),flush=True);body,status={'code':'FIXTURE_REJECTED'},422
   send_json(self,status,body)
 server=HTTPServer(('127.0.0.1',20117),Handler);server.timeout=.2
 if os.environ.get('MOCK_SERVER_READY_FILE'):
