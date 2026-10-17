@@ -44,6 +44,8 @@ func _run() -> void:
 	values.initialize(http, auth)
 	var inbox := HorizonInbox.new()
 	inbox.initialize(http, auth, values)
+	if not _compactContracts(inbox):
+		_fail("Compact sources, configurable limits, free text and valuable attachments must validate without losing retained state"); return
 	http.responses = [{"data": _snapshot(1, 10), "delay": .12}, {"data": _snapshot(2, 11)}]
 	var first: Dictionary = {}
 	var followup: Dictionary = {}
@@ -173,6 +175,55 @@ func _read(inbox: HorizonInbox, result: Dictionary) -> void:
 
 func _entry(index: int) -> Dictionary:
 	return {"id": "broadcast:00000000-0000-4000-8000-%012d" % index, "kind": "broadcast", "type": "reward", "reference": "", "textKey": "reward", "parameters": {}, "createdAt": "2026-10-15T12:00:00Z", "expiresAt": "2026-10-16T12:00:00Z", "overdue": true, "read": false, "claimed": false, "attachment": {"values": [{"key": "coins", "amount": 1}]}}
+
+func _compactContracts(inbox: HorizonInbox) -> bool:
+	var snapshot: Dictionary = _snapshot(9007199254740991, 1)
+	snapshot.limits = {"targeted": 1000, "broadcasts": 2000, "freeTexts": 4, "freeTextBytes": 512, "freeTextRetentionDays": 30}
+	if inbox._normalize(snapshot, USER, "").get("limits", {}).get("broadcasts") != 2000:
+		return false
+	snapshot.limits.targeted = 1
+	snapshot.limits.broadcasts = 1
+	for i: int in range(551):
+		snapshot.entries.append(_entry(i))
+	if inbox._normalize(snapshot, USER, "").get("entries", []).size() != 551:
+		return false
+	var entry: Dictionary = _entry(1)
+	entry.merge({"id": "message:" + USER, "kind": "message", "type": "free_text", "reference": "", "textKey": "horizon.inbox.free_text", "parameters": {"text": "ä".repeat(256)}, "attachment": null, "createdAt": "2030-01-01T00:00:00Z"}, true)
+	snapshot.entries = [entry]
+	var normalized: Dictionary = inbox._normalize(snapshot, USER, "")
+	if normalized.is_empty() or HorizonInbox.getFreeText(normalized.entries[0]).to_utf8_buffer().size() != 512:
+		return false
+	var cases: Array = [
+		["friend_request", "horizon.friends.request", "userId", HorizonInbox.SourceKind.FRIEND_REQUEST],
+		["friend_accept", "horizon.friends.accept", "userId", HorizonInbox.SourceKind.FRIEND_ACCEPTED],
+		["group_invite", "horizon.groups.invite", "groupId", HorizonInbox.SourceKind.GROUP_INVITATION],
+		["group_request", "horizon.groups.request", "groupId", HorizonInbox.SourceKind.GROUP_REQUEST],
+		["group_accept-invite", "horizon.groups.accept-invite", "groupId", HorizonInbox.SourceKind.GROUP_INVITATION_ACCEPTED],
+		["group_accept-request", "horizon.groups.accept-request", "groupId", HorizonInbox.SourceKind.GROUP_REQUEST_ACCEPTED],
+		["match_turn", "horizon.matches.your_turn", "matchId", HorizonInbox.SourceKind.MATCH_TURN]]
+	for case: Array in cases:
+		entry.type = case[0]
+		entry.textKey = case[1]
+		entry.reference = USER
+		entry.parameters = {case[2]: USER}
+		if case[0] == "match_turn":
+			entry.parameters.revision = "9007199254740991"
+		if inbox._normalize(snapshot, USER, "").is_empty() or HorizonInbox.getSource(entry).get("kind") != case[3]:
+			return false
+		entry.reference = "bad"
+		if not inbox._normalize(snapshot, USER, "").is_empty():
+			return false
+	entry.merge({"type": "marketplace", "textKey": "marketplace.item_return", "reference": USER, "parameters": {}, "attachment": {"values": [], "itemReturn": {"listingId": USER, "instanceId": USER, "itemKey": "sword"}}}, true)
+	if inbox._normalize(snapshot, USER, "").is_empty() or not HorizonInbox.canClaim(entry) or HorizonInbox.getSource(entry).get("kind") != HorizonInbox.SourceKind.MARKET_RETURN:
+		return false
+	for field: String in ["attachment", "itemReturn", "values"]:
+		var broken: Dictionary = snapshot.duplicate(true)
+		if field == "attachment": broken.entries[0].attachment.unknownReward = 1
+		elif field == "itemReturn": broken.entries[0].attachment.itemReturn.unknownReward = 1
+		else: broken.entries[0].attachment.values = [{"key": "gold", "amount": 1, "unknownReward": 1}]
+		if not inbox._normalize(broken, USER, "").is_empty():
+			return false
+	return HorizonInbox._validItems([{"instanceId": USER, "itemKey": "sword"}]) and not HorizonInbox._validItems([{"instanceId": "bad", "itemKey": "sword"}])
 
 func _fail(message: String) -> void:
 	push_error(message)

@@ -10,6 +10,7 @@ from mock_http import report_rejection, send_json
 
 USER = "00000000-0000-4000-8000-000000001006"
 ENTRY = "message:" + USER
+ITEM_ENTRY = "message:00000000-0000-4000-8000-000000001007"
 ROOT = "/api/v1/app/inbox"
 
 def snapshot(revision=1, cursor="cursor-one", second=10):
@@ -40,6 +41,28 @@ replay = copy.deepcopy(claim)
 replay["replayed"] = True
 replay["inbox"]["serverTime"] = "2026-10-16T12:00:15Z"
 replay["playerValues"]["operationWindow"]["serverTime"] = "2026-10-16T12:00:15Z"
+compact = snapshot(100, "compact", 20)
+free_text = copy.deepcopy(compact["entries"][0])
+free_text.update(type="free_text", reference="", textKey="horizon.inbox.free_text",
+                 parameters={"text": "ä" * 256}, attachment=None, createdAt="2030-01-01T00:00:00Z")
+item = copy.deepcopy(compact["entries"][0])
+item.update(id=ITEM_ENTRY, type="marketplace", reference=USER, textKey="marketplace.item_return", parameters={},
+            attachment={"values": [], "itemReturn": {"listingId": USER, "instanceId": USER, "itemKey": "sword"}})
+compact["entries"] = [free_text, item]
+for i in range(550):
+    ordinary = copy.deepcopy(free_text)
+    ordinary.update(id=f"broadcast:00000000-0000-4000-8000-{i:012d}", kind="broadcast", type="custom", textKey="custom.notice", parameters={})
+    compact["entries"].append(ordinary)
+compact["limits"] = {"targeted": 1, "broadcasts": 1, "freeTexts": 4, "freeTextBytes": 512, "freeTextRetentionDays": 30}
+item_claim = {"entryId": ITEM_ENTRY, "replayed": False, "inbox": snapshot(101, "returned", 21), "playerValues": copy.deepcopy(values),
+              "items": [{"instanceId": USER, "itemKey": "sword"}]}
+item_claim["inbox"]["entries"] = []
+item_claim["playerValues"]["operationWindow"]["serverTime"] = "2026-10-16T12:00:21Z"
+item_replay = copy.deepcopy(item_claim)
+item_replay["replayed"] = True
+item_replay["inbox"]["revision"] = 102
+item_replay["inbox"]["serverTime"] = "2026-10-16T12:00:22Z"
+item_replay["playerValues"]["operationWindow"]["serverTime"] = "2026-10-16T12:00:22Z"
 EXPECTED = [
     ("GET", ROOT, {"userId": [USER]}, None, 200, first),
     ("GET", ROOT, {"userId": [USER], "since": ["cursor-one"]}, None, 200, unchanged),
@@ -49,6 +72,9 @@ EXPECTED = [
     ("POST", ROOT + "/claim", {}, {"userId": USER, "entryId": ENTRY}, 200, replay),
     ("POST", ROOT + "/remove", {}, {"userId": USER, "entryId": ENTRY}, 409,
      {"code": "UNCLAIMED_REWARD", "message": "Claim first"}),
+    ("GET", ROOT, {"userId": [USER]}, None, 200, compact),
+    ("POST", ROOT + "/claim", {}, {"userId": USER, "entryId": ITEM_ENTRY}, 200, item_claim),
+    ("POST", ROOT + "/claim", {}, {"userId": USER, "entryId": ITEM_ENTRY}, 200, item_replay),
 ]
 
 class Handler(BaseHTTPRequestHandler):
@@ -98,7 +124,7 @@ def main():
         server.handle_request()
     if Handler.failed or Handler.count != len(EXPECTED):
         return 1
-    print("Godot Inbox mock observed all seven exact REST requests")
+    print(f"Godot Inbox mock observed all {len(EXPECTED)} exact REST requests")
     return 0
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@ extends SceneTree
 
 const USER := "00000000-0000-4000-8000-000000001006"
 const ENTRY := "message:00000000-0000-4000-8000-000000001006"
+const ITEM_ENTRY := "message:00000000-0000-4000-8000-000000001007"
 
 func _initialize() -> void:
 	call_deferred("_run")
@@ -47,6 +48,15 @@ func _run() -> void:
 	var denied: Dictionary = await inbox.remove(USER, ENTRY)
 	if denied.success or denied.errorCode != "UNCLAIMED_REWARD" or not inbox.getCurrentInbox().is_empty():
 		_fail("Failed mutation must expose its code and invalidate the old snapshot"); return
+	loaded = await inbox.getInbox(USER)
+	if not loaded.success or loaded.data.entries.size() != 552 or loaded.data.limits.freeTextBytes != 512 or HorizonInbox.getFreeText(loaded.data.entries[0]).to_utf8_buffer().size() != 512:
+		_fail("Configured free text and retained entries above lowered quotas must remain readable over HTTP"); return
+	if not HorizonInbox.canClaim(loaded.data.entries[1]) or HorizonInbox.getSource(loaded.data.entries[1]).get("kind") != HorizonInbox.SourceKind.MARKET_RETURN:
+		_fail("An item-only Market descriptor must be typed and claimable"); return
+	for replayed: bool in [false, true]:
+		claimed = await inbox.claim(USER, ITEM_ENTRY)
+		if not claimed.success or claimed.data.replayed != replayed or claimed.data.items != [{"instanceId": USER, "itemKey": "sword"}] or values.getCurrentState().values[0].balance != 9007199254740991:
+			_fail("Item return and replay must preserve references without adding local rewards"); return
 	if (await inbox.getInbox("other-user")).errorCode != "SESSION_FORBIDDEN" or (await inbox.claim(USER, "broken")).errorCode != "INVALID_REQUEST":
 		_fail("Foreign users and malformed entry IDs must fail locally"); return
 	http.sessionToken = ""
