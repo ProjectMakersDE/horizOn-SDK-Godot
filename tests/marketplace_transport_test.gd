@@ -93,7 +93,15 @@ func _run() -> void:
 	check((await sample.read_rules_page()).success)
 	var quote: Dictionary = sample.review_create(INSTANCE, 101, 300)
 	check(quote.success and quote.data.feeAmount == 3 and quote.data.sellerNet == 98 and quote.data.currencyKey == "1coin.gold")
-	check(not (await sample.confirm_reviewed_trade()).success)
+	if OS.get_environment("HORIZON_MARKETPLACE_DESTROY_DURING_SEND") == "1":
+		sample.call_deferred("confirm_reviewed_trade")
+		await create_timer(.04).timeout
+		sample.free()
+		await create_timer(.4).timeout
+		check(not DirAccess.dir_exists_absolute(ProjectSettings.globalize_path(Pending.path(PROJECT, SELLER) + ".sending")))
+		sample = actor()
+	else:
+		check(not (await sample.confirm_reviewed_trade()).success)
 	var saved: Dictionary = Pending.load_pending(PROJECT, SELLER).pending
 	check(saved.phase == "intent" and Models.valid_intent("create", saved.body))
 	check(not saved.has("item") and not saved.has("receipt"))

@@ -76,7 +76,7 @@ expect("GET", ROOT + "/listings", lambda: {"listings": [row()], "nextCursor": No
 expect("GET", ROOT + "/listings/" + LISTING, lambda: {"listing": row(), "serverTime": now()}, q())
 expect("GET", "/api/v1/app/items", lambda: inventory(revision=9, instances=[original()]), q())
 expect("GET", ROOT + "/rules", rule_page, q(limit=50))
-expect("POST", ROOT + "/listings", {"code": "STATE_CONFLICT"}, body="create", status=503, save="create")
+expect("POST", ROOT + "/listings", {"code": "STATE_CONFLICT"}, body="create", status=503, save="create", delay=.2)
 expect("GET", ROOT + "/operations/__CREATE__", lambda: {"receipt": receipt("create"), "serverTime": now()}, q())
 expect("GET", "/api/v1/app/items", {"code": "STATE_CONFLICT"}, q(), status=409)
 expect("GET", "/api/v1/app/items", inventory, q())
