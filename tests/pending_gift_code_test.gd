@@ -19,7 +19,7 @@ func _initialize() -> void: call_deferred("_run")
 func _run() -> void:
 	var project: String = "gift-project"
 	var user_id: String = "00000000-0000-4000-8000-000000001007"
-	var intent: Dictionary = {"userId":user_id,"code":"WELCOME2026","idempotencyId":HorizonGiftCodes.createRedemptionId()}
+	var intent: Dictionary = {"protocolVersion":2,"projectScope":project.sha256_text(),"userId":user_id,"code":"WELCOME2026","campaignId":"00000000-0000-4000-8000-000000001007","expectedCount":"9007199254740993","configRevision":"9223372036854775807"}
 	var file: String = Pending.path(project,user_id)
 	var lock: String = ProjectSettings.globalize_path(file + ".lock")
 	assert(DirAccess.make_dir_absolute(lock) == OK)
@@ -31,14 +31,14 @@ func _run() -> void:
 	assert(Pending.load_pending("other-project",user_id).pending.is_empty())
 	assert(Pending.load_pending(project,"other-player").pending.is_empty())
 	var wrong: Dictionary = intent.duplicate(true)
-	wrong.idempotencyId = HorizonGiftCodes.createRedemptionId()
+	wrong.expectedCount = "9007199254740994"
 	assert(not Pending.confirm(project,wrong),"Late completion cannot delete another ID")
 	wrong = intent.duplicate(true)
 	wrong.code = "OTHER"
 	assert(not Pending.confirm(project,wrong),"Original payload is immutable")
 	wrong = intent.duplicate(true)
-	wrong.idempotencyId += "\n"
-	assert(not Pending.valid(wrong,user_id),"ID validation consumes the exact full string")
+	wrong.expectedCount += "\n"
+	assert(not Pending.valid(wrong,project,user_id),"ID validation consumes the exact full string")
 	var next: FileAccess = FileAccess.open(file + ".next",FileAccess.WRITE)
 	next.store_var(intent,false)
 	next.close()

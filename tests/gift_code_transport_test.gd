@@ -25,15 +25,15 @@ func _run() -> void:
 	var gift_codes := HorizonGiftCodes.new()
 	gift_codes.initialize(http, logger, auth)
 
-	var redeemed := await gift_codes.redeem("SUMMER2026")
-	if not redeemed.get("success", false):
-		_fail("session-bound redeem request was rejected by the contract server")
-		return
-
+	var valid: Variant = await gift_codes.validate("SUMMER2026")
+	if not valid:
+		_fail("public read-only validation failed"); return
+	if (await gift_codes.redeem("SUMMER2026")).get("errorCode") != "UPGRADE_REQUIRED":
+		_fail("V1 must be explicitly closed"); return
 	# A signed-in user without a transport session must not reach the server.
 	http.sessionToken = ""
 	var without_session := await gift_codes.redeem("SUMMER2026")
-	if not without_session.is_empty():
+	if without_session.get("errorCode") != "UPGRADE_REQUIRED":
 		_fail("redeem must not send a request without a session token")
 		return
 
@@ -41,7 +41,7 @@ func _run() -> void:
 	http.sessionToken = "session-token-886"
 	auth._currentUser.clear()
 	var without_user := await gift_codes.redeem("SUMMER2026")
-	if not without_user.is_empty():
+	if without_user.get("errorCode") != "UPGRADE_REQUIRED":
 		_fail("redeem must reject a missing user")
 		return
 

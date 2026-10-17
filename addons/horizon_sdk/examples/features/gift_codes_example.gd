@@ -1,11 +1,26 @@
 ## Configure WELCOME2026 values separately from arbitrary giftData in the Dashboard.
-## Original UUID + code are flushed before HTTP and retained on every uncertain/error outcome.
+## Original campaign/count/revision are flushed before HTTP and retained on every uncertain/error outcome.
 extends Node
 const Pending = preload("res://addons/horizon_sdk/examples/features/pending_gift_code.gd")
 const Identity = preload("res://addons/horizon_sdk/examples/features/pending_statistics.gd")
 const GIFT_CODE := "WELCOME2026"
 
-func _ready() -> void:
+var _busy: bool = false
+
+## Bind these to explicit UI actions. Startup never consumes a code.
+func redeemConfiguredCode() -> void:
+	await _redeem(false)
+
+func retryPendingRedemption() -> void:
+	await _redeem(true)
+
+func _redeem(retry_only: bool) -> void:
+	if _busy: return
+	_busy = true
+	await _send(retry_only)
+	_busy = false
+
+func _send(retry_only: bool) -> void:
 	var horizon: Node = get_node_or_null("/root/Horizon")
 	if horizon == null or not await horizon.connect_to_server(): return
 	var project: String = horizon.getConfig().api_key
@@ -13,21 +28,20 @@ func _ready() -> void:
 	var user_id: String = horizon.auth.getCurrentUser().userId
 	if horizon._http.apiKey != project: return
 	var loaded: Dictionary = Pending.load_pending(project,user_id)
-	if not loaded.success:
-		push_error("Saved redemption needs reconciliation; original files retained"); return
+	if not loaded.success: push_error("Saved V1/corrupt intent needs recovery; original files retained"); return
 	var pending: Dictionary = loaded.pending
 	if pending.is_empty():
-		pending = {"userId":user_id,"code":GIFT_CODE,"idempotencyId":HorizonGiftCodes.createRedemptionId()}
-		if not Pending.store(project,pending):
-			push_error("Cannot persist the original redemption before sending"); return
-	var result: Dictionary = await horizon.giftCodes.redeemParsed(pending.code,pending.idempotencyId)
-	if result.is_empty() or not result.get("success",false):
-		push_warning("Redemption unresolved. Read current state and retry the original ID/code; no replacement guest or intent created."); return
-	if not Pending.confirm(project,pending): push_warning("Confirmed intent retained because exact cleanup failed")
-	print("Opaque giftData rewards: %s" % JSON.stringify(result.rewards))
-	print("Already booked values (do not add again): %s" % JSON.stringify(result.grantedValues))
-	if result.playerValues != null: print("Current server balances: %s" % JSON.stringify(result.playerValues.values))
-	print("Unlocked cosmetics: %s, replayed=%s" % [result.grantedUnlocks,result.replayed])
+		if retry_only: return
+		pending = await horizon.giftCodes.prepareRedemption(GIFT_CODE)
+		if pending.is_empty() or horizon._http.apiKey != project or horizon.auth.getCurrentUser().userId != user_id: return
+		if not Pending.store(project,pending): return
+	elif not retry_only:
+		push_warning("Retry or reconcile the pending intent first"); return
+	var result: Dictionary = await horizon.giftCodes.redeemPreparedParsed(pending)
+	if not result.get("success",false): push_warning("Original tuple retained: " + horizon.giftCodes.getLastErrorCode()); return
+	if horizon._http.apiKey != project or horizon.auth.getCurrentUser().userId != user_id: return
+	if not Pending.confirm(project,pending): push_warning("Confirmed tuple remains available for safe replay")
+	print("Current state: %s, replayed=%s" % [result.playerValues,result.replayed])
 
 func _authenticate(horizon: Node,project: String) -> bool:
 	if horizon.auth.isSignedIn(): return Identity.mark_identity(project)

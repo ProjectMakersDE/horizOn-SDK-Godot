@@ -387,8 +387,8 @@ func _sendRequest(endpoint: String, method: int, data: Dictionary, useSessionTok
 	# Signup creates a fresh server identity; legacy redemption has no deduplication ID.
 	# An uncertain outcome must never trigger a second effect within the transport.
 	var route: String = endpoint.get_slice("?", 0)
-	var redemption_id: Variant = data.get("idempotencyId")
-	if method == HTTPClient.METHOD_POST and (route == "/api/v1/app/user-management/signup" or (route == "/api/v1/app/gift-codes/redeem" and (not redemption_id is String or redemption_id.is_empty()))):
+	var stable_gift: bool = data.get("protocolVersion") == 2 and HorizonGiftCodes._uuid(data.get("campaignId")) and HorizonGiftCodes.canonicalCount(data.get("expectedCount")) and HorizonGiftCodes.canonicalCount(data.get("configRevision"))
+	if method == HTTPClient.METHOD_POST and (route == "/api/v1/app/user-management/signup" or (route == "/api/v1/app/gift-codes/redeem" and not stable_gift)):
 		maxAttempts = 1
 
 	while attemptCount < maxAttempts:

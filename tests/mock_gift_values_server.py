@@ -1,70 +1,68 @@
-#!/usr/bin/env python3
-"""Authenticated loopback only. A successful first booking loses its response, then replays."""
-import json,os,sys,time
+"""Artificial V2 campaign/count fixture. No external services or production credentials."""
+import copy,json,os,socket,time
 from http.server import BaseHTTPRequestHandler,HTTPServer
-from mock_http import send_json,report_rejection
-USER="00000000-0000-4000-8000-000000001007"
-BASE="/api/v1/app/gift-codes/redeem"
-def state(rev=2,balance=4294967296):
- return {"userId":USER,"definitionVersion":1,"revision":rev,"day":"2026-10-16","values":[{"key":"1.coin","balance":balance,"earnedToday":0,"dailyCap":None}],"operationWindow":{"serverTime":f"2026-10-16T12:00:{rev:02d}Z","oldestAcceptedAt":"2026-09-16T12:00:00Z"}}
-def reply(rev=2,balance=4294967296,grant=4294967296,replayed=False):
- return {"success":True,"message":"ok","giftData":"{\"gold\":13}","grantedUnlocks":[],"grantedValues":[{"key":"1.coin","amount":grant}],"playerValues":state(rev,balance),"replayed":replayed}
-def body(code,n):
- d={"code":code,"userId":USER}
- if n is not None:d["idempotencyId"]=n if isinstance(n,str) else f"00000000-0000-4000-8000-{n:012d}"
- return d
-first=reply();first["grantedUnlocks"]=["badge.tester"]
-wrong=reply(5);wrong["playerValues"]["userId"]="00000000-0000-4000-8000-000000999999"
-escaped_amount=json.dumps(reply(5)).replace('"amount": 4294967296',r'"am\u006funt":1.0000000000000001').encode()
-escaped_balance=json.dumps(reply(5)).replace('"balance": 4294967296',r'"bal\u0061nce":4294967296.0000000001').encode()
-duplicate=json.dumps(reply(5)).replace('"amount": 4294967296',r'"amount":1,"am\u006funt":2').encode()
-assert b'\\u006f' in escaped_amount and json.loads(escaped_amount)["grantedValues"][0]["amount"]==1.0
-assert b'\\u0061' in escaped_balance
-EXPECTED=[
- ("VALUES",1,200,first,0),
- ("VALUES",1,200,reply(3,4294967297,replayed=True),0),
- ("PARSED",2,200,{"success":True,"message":"ok","giftData":"{\"gold\":13}"},0),
- ("NULL",3,200,{"success":True,"message":"ok","giftData":None},0),
- ("BOUNDARY","x"*128,200,{"success":True,"message":"ok","giftData":""},0),
- ("UNICODE","😀"*64,200,{"success":True,"message":"ok","giftData":""},0),
- ("MAX",4,422,{"code":"MAX_BALANCE_REACHED","message":"Not booked"},0),
- ("LEGACY",None,503,{"message":"Outcome unknown"},0),
- ("RETRY",5,503,{"message":"Booked, response lost"},0),
- ("RETRY",5,200,reply(4,9007199254740991,9007199254740991,True),0),
- ("OPAQUE",16,200,{"success":True,"message":"ok","giftData":'{"amount":1.0000000000000001}'},0),
- ("ESCAPED_AMOUNT",17,200,escaped_amount,0),
- ("ESCAPED_BALANCE",18,200,escaped_balance,0),
- ("DUPLICATE",19,200,duplicate,0),
- ("FRACTION",6,200,reply(5,9007199254740991,1.0),0),
- ("STRING",7,200,reply(5,9007199254740991,"1"),0),
- ("UNSAFE",8,200,reply(5,9007199254740991,9007199254740992),0),
- ("WRONG",9,200,wrong,0),
- ("OLD",10,200,reply(2),0),
- ("LEGACYCACHE",None,200,{"success":True,"message":"ok","giftData":'{"legacy":true}',"grantedUnlocks":["badge.second"]},.15),
- ("CACHE",11,200,reply(5),.15),
- ("SESSION",12,200,reply(5),.15),
- ("ABA",13,200,reply(5),.15),
- ("HOSTABA",20,200,reply(5),.15),
- ("PROJECTABA",21,200,reply(5),.15),
- ("TOKENABA",22,200,reply(5),.15),
- ("BACKOFF",14,503,{"message":"Outcome unknown"},0),
- ("BACKOFFABA",23,503,{"message":"Outcome unknown"},0),
-]
+USER='00000000-0000-4000-8000-000000001007'
+CAMPAIGN='00000000-0000-4000-8000-000000101007'
+OTHER='00000000-0000-4000-8000-000000201007'
+COUNT='9007199254740993';REV='9223372036854775807'
+EXPECTED=[('prepare','VALUES'),('prepare','VALUES'),('lost','VALUES'),('replay','VALUES'),('replay','VALUES'),('newcampaign','VALUES'),('replay','VALUES')]
+EXPECTED += [('error',code) for code in ['COUNT_AHEAD','CAMPAIGN_CHANGED','UPGRADE_REQUIRED','MIGRATION_REQUIRED','COUNTER_EXHAUSTED']]
+EXPECTED += [('bad',code) for code in ['NUMERIC','OVERFLOW','HISTORY']]
+EXPECTED += [('fence',code) for code in ['CACHE','SESSION','PROJECT','SIGNOUT']]
+EXPECTED += [('prepare','TWO'),('prepare','TWO'),('fresh','TWO'),('replay','TWO')]
+EXPECTED += [('badprepare',code) for code in ['NUMERIC','OVERFLOW']]
+def receipt(replay=True):
+ return {'success':True,'message':'accepted','campaignId':CAMPAIGN,'count':'9007199254740994','configRevision':REV,
+  'giftData':None if replay else '{"opaque":true}','grantedValues':[] if replay else [{'key':'gold','amount':7}], 'grantedUnlocks':[] if replay else ['fixture-hat'],
+  'playerValues':{'userId':USER,'definitionVersion':1,'revision':30,'day':'2026-10-17','values':[{'key':'gold','balance':100,'earnedToday':0,'dailyCap':None}],
+   'operationWindow':{'serverTime':'2026-10-17T00:00:30Z','oldestAcceptedAt':'2026-09-17T00:00:00Z'}},'replayed':replay,'alreadyApplied':replay}
 class Handler(BaseHTTPRequestHandler):
- seen=0;failure=None
- def do_POST(self):
-  index=type(self).seen;type(self).seen+=1
-  if index>=len(EXPECTED):return self.reject("unexpected retry")
-  code,n,status,response,delay=EXPECTED[index]
-  actual=json.loads(self.rfile.read(int(self.headers.get("Content-Length",0))))
-  if self.path!=BASE or actual!=body(code,n) or self.headers.get("X-API-Key")!="fixture-key-1007" or self.headers.get("Authorization")!="Bearer fixture-session-1007":return self.reject(f"request{index}: unexpected path/body/auth")
-  time.sleep(delay);send_json(self,status,response)
+ count=0;failure=None
+ def reply(self,status,value):
+  data=json.dumps(value,ensure_ascii=False).encode();self.send_response(status);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(data)));self.end_headers()
+  try:self.wfile.write(data)
+  except (BrokenPipeError,ConnectionResetError):pass
  def reject(self,message):
-  type(self).failure=message;report_rejection(message);send_json(self,422,{"message":message})
+  type(self).failure=message;print(message,flush=True);self.reply(422,{'code':'FIXTURE_CONTRACT','message':message})
+ def do_GET(self):
+  if self.path=='/actuator/health':self.reply(200,{'status':'UP'})
+  else:self.reject('Unexpected GET')
+ def do_POST(self):
+  body=json.loads(self.rfile.read(int(self.headers.get('Content-Length','0'))))
+  if self.path=='/api/v1/app/user-management/signin':
+   if body!={'type':'ANONYMOUS','anonymousToken':'fixture-anonymous-1007'}:self.reject('Original auth identity changed');return
+   self.reply(200,{'userId':USER,'username':'Fixture','accessToken':'fixture-session-1007','authStatus':'AUTHENTICATED','isAnonymous':True,'isVerified':False});return
+  index=type(self).count;type(self).count+=1
+  if index>=len(EXPECTED):self.reject('Extra request or automatic prepare');return
+  action,code=EXPECTED[index]
+  if self.headers.get('X-API-Key')!='fixture-key-1007' or self.headers.get('Authorization')!='Bearer fixture-session-1007':self.reject('Wrong project or Bearer');return
+  prepare=action in ['prepare','newcampaign','badprepare']
+  expected={'code':code,'userId':USER,**({'includeIntent':True} if prepare else {'protocolVersion':2,'campaignId':CAMPAIGN,'expectedCount':COUNT,'configRevision':REV})}
+  if body!=expected or self.path!='/api/v1/app/gift-codes/'+('validate' if prepare else 'redeem'):self.reject(f'Request{index+1}: original tuple or route changed');return
+  if action=='lost':self.connection.shutdown(socket.SHUT_RDWR);self.connection.close();return
+  if action=='error':self.reply(409,{'code':code,'message':'Explicit reconciliation required'});return
+  if prepare:
+   value={'valid':True,'protocolVersion':2,'campaignId':OTHER if action=='newcampaign' else CAMPAIGN,'expectedCount':COUNT,'configRevision':REV}
+   if action=='badprepare':value['expectedCount']=int(COUNT) if code=='NUMERIC' else '9223372036854775808'
+  else:
+   value=receipt(action!='fresh')
+   if action=='bad':
+    if code=='NUMERIC':value['count']=int(value['count'])
+    if code=='OVERFLOW':value['count']='9223372036854775808'
+    if code=='HISTORY':value['giftData']='{"historical":true}'
+  if action=='fence':time.sleep(.15)
+  self.reply(200,copy.deepcopy(value))
  def log_message(self,*args):pass
-server=HTTPServer(("127.0.0.1",18907),Handler);server.timeout=10
-if os.environ.get("MOCK_SERVER_READY_FILE"):open(os.environ["MOCK_SERVER_READY_FILE"],"w").write("ready")
-for _ in EXPECTED:server.handle_request()
-server.timeout=1.5;server.handle_request()
-if Handler.failure or Handler.seen!=len(EXPECTED):print(Handler.failure or f"Expected{len(EXPECTED)},got{Handler.seen}",file=sys.stderr);sys.exit(1)
-print(f"Godot gift values fixture observed{Handler.seen} exact requests, stable replay ID and no legacy/session retry")
+def main():
+ server=HTTPServer(('127.0.0.1',int(os.environ.get('GIFT_FIXTURE_PORT','18907'))),Handler);server.timeout=.2
+ marker=os.environ.get('MOCK_SERVER_READY_FILE')
+ if marker:
+  with open(marker,'w') as f:f.write('ready\n')
+ deadline=time.monotonic()+120
+ while Handler.count<len(EXPECTED) and not Handler.failure and time.monotonic()<deadline:server.handle_request()
+ deadline=time.monotonic()+1
+ while not Handler.failure and time.monotonic()<deadline:server.handle_request()
+ server.server_close()
+ if Handler.failure or Handler.count!=len(EXPECTED):raise RuntimeError(f'{Handler.failure}; requests={Handler.count}/{len(EXPECTED)}')
+ print(f'V2 Gift: {Handler.count} exact HTTP requests; original tuple retry, code reuse, contention, typed errors and malformed strings passed',flush=True)
+if __name__=='__main__':main()

@@ -745,7 +745,20 @@ func _onGiftCodeRedeemClicked() -> void:
 		return
 
 	_txtGiftCodeResponse.text = "Redeeming code..."
-	var result: Dictionary = await _horizon.giftCodes.redeem(code)
+	var project: String = _horizon._http.apiKey
+	var user: String = _horizon.auth.getCurrentUser().userId
+	var pending_store = preload("res://addons/horizon_sdk/examples/features/pending_gift_code.gd")
+	var loaded: Dictionary = pending_store.load_pending(project,user)
+	if not loaded.success: return
+	var intent: Dictionary = loaded.pending
+	if intent.is_empty():
+		intent = await _horizon.giftCodes.prepareRedemption(code)
+		if intent.is_empty() or not pending_store.store(project,intent): return
+	elif intent.code != code:
+		push_warning("Reconcile the original pending code first"); return
+	var result: Dictionary = await _horizon.giftCodes.redeemPrepared(intent)
+	if result.get("success",false) and _horizon._http.apiKey == project and _horizon.auth.getCurrentUser().userId == user:
+		pending_store.confirm(project,intent)
 
 	if not result.is_empty():
 		if result.get("success", false):

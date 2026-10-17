@@ -214,23 +214,18 @@ for entry in entries:
 Horizon.news.clearCache()
 ```
 
-### Gift Codes (Horizon.giftCodes)
+### Gift Codes
 
-`redeem` needs a signed-in player and sends the player session (`Authorization: Bearer`). The server only redeems codes for the player who owns that session.
+Prepare once, durably persist the complete scoped intent, then send it. The feature example provides separate explicit redeem/retry actions and a guarded file store.
 
 ```gdscript
-# Validate a code
-var isValid = await Horizon.giftCodes.validate("ABCD-1234")
-
-# Redeem a code
-var result: Dictionary = await Horizon.giftCodes.redeem("ABCD-1234")
-if result.get("success", false):
-    var giftData = result.get("giftData", "")
-    print("Rewards: %s" % giftData)
-    # Cosmetics unlocked by the code (`grants`), [] for codes without grants.
-    # The cached player profile is dropped, the next getProfile() shows them.
-    print("Unlocked: %s" % result.get("grantedUnlocks", []))
+var intent: Dictionary = await Horizon.giftCodes.prepareRedemption("ABCD-1234")
+# Persist all intent fields for this project/player BEFORE sending.
+var result: Dictionary = await Horizon.giftCodes.redeemPrepared(intent)
+# After uncertainty/restart: load and resend the same intent; never prepare a replacement automatically.
 ```
+
+Counts/revisions are canonical Int64 decimal strings. Replay has `alreadyApplied/replayed=true`, current Player Values, null giftData and empty grants. Replace current balances, never add grants. V1 `redeem(code[, id])` returns `UPGRADE_REQUIRED`; protected `MIGRATION_REQUIRED`, `COUNT_AHEAD`, `CAMPAIGN_CHANGED`, `COUNTER_EXHAUSTED` and domain errors require reconciliation. An intent cannot move to another player/project or a reused visible code. `redeemPreparedParsed` only parses fresh opaque giftData and never turns it into authoritative balances.
 
 ### Player Profile (Horizon.playerProfile)
 
