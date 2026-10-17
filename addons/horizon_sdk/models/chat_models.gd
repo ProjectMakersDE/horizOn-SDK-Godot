@@ -36,7 +36,7 @@ static func text(value: Variant, characters: int = 500, bytes: int = 2000) -> bo
 		if (code < 32 and code not in [9, 10]) or (code >= 127 and code <= 159) or (code >= 0xd800 and code <= 0xdfff): return false
 	return true
 static func ids(value: Variant) -> bool:
-	if not value is Array or value.size() > 100: return false
+	if not value is Array or value.size() > 20: return false
 	var seen: Dictionary = {}
 	for id: Variant in value:
 		if not uuid(id) or seen.has(id): return false
@@ -59,18 +59,18 @@ static func message(value: Variant, id: String) -> bool:
 static func receipt(value: Variant) -> bool:
 	return fields(value, ["operationId", "issuedAt", "channelId", "messageId", "createdAt", "expiresAt"]) and uuid(value.operationId) and uuid(value.channelId) and uuid(value.messageId) and time(value.issuedAt) and time(value.createdAt) and time(value.expiresAt) and millis(value.expiresAt) > millis(value.createdAt) and millis(value.expiresAt) - millis(value.createdAt) <= RETENTION_MILLIS
 static func limits(value: Variant) -> bool:
-	if not fields(value, ["retainedMessagesPerPlayer", "retainedMessagesPerChannel", "retentionSeconds", "messageCharacters", "messageUtf8Bytes", "channelsPerAccount", "sendsPerAccountMinute", "playerSendIntervalMillis", "channelSendIntervalMillis", "reportsPerProject", "receiptCount", "reportReceiptCount", "wordFilterTerms"]): return false
+	if not fields(value, ["retainedMessagesPerPlayer", "retainedMessagesPerChannel", "retentionSeconds", "privateRetainedMessagesPerChannel", "privateRetentionSeconds", "operationWindowSeconds", "operationFutureToleranceSeconds", "messageCharacters", "messageUtf8Bytes", "channelsPerAccount", "sendsPerAccountMinute", "playerSendIntervalMillis", "channelSendIntervalMillis", "reportsPerProject", "receiptCount", "reportReceiptCount", "wordFilterTerms"]): return false
 	for key: String in value:
 		if not integer(value[key]): return false
-	return value.retainedMessagesPerPlayer <= 100 and value.retainedMessagesPerChannel == 100 and value.retentionSeconds == 604800 and value.messageCharacters == 500 and value.messageUtf8Bytes == 2000 and value.channelsPerAccount <= 2000 and value.sendsPerAccountMinute <= 120 and value.reportsPerProject <= 200 and value.receiptCount == 100 and value.reportReceiptCount == 32 and value.wordFilterTerms == 100
+	return value.retainedMessagesPerPlayer == 0 and value.retainedMessagesPerChannel == 20 and value.privateRetainedMessagesPerChannel == 15 and value.privateRetentionSeconds == 30 and value.operationWindowSeconds == 30 and value.operationFutureToleranceSeconds == 60 and value.retentionSeconds == 604800 and value.messageCharacters == 500 and value.messageUtf8Bytes == 2000 and value.channelsPerAccount <= 2000 and value.sendsPerAccountMinute <= 120 and value.reportsPerProject <= 200 and value.receiptCount == 0 and value.reportReceiptCount == 0 and value.wordFilterTerms == 100
 static func parse(raw: String) -> Dictionary: return HorizonItemModels.parse(raw, 1048576)
 static func envelope(raw: String, kind: String, user: String, id: String = "", options: Dictionary = {}) -> Dictionary:
 	var data: Dictionary = parse(raw)
 	if not time(data.get("serverTime")): return {}
 	match kind:
 		"limits":
-			if not limits(data.get("limits")) or not moderation(data.get("moderation")) or not fields(data.get("capabilities"), ["chat", "realtime", "incrementalSync"]): return {}
-			for key: String in ["chat", "realtime", "incrementalSync"]:
+			if not limits(data.get("limits")) or not moderation(data.get("moderation")) or not fields(data.get("capabilities"), ["chat", "realtime", "incrementalSync", "localHistory"]): return {}
+			for key: String in ["chat", "realtime", "incrementalSync", "localHistory"]:
 				if not data.capabilities[key] is bool: return {}
 		"open":
 			if not channel(data.get("channel")) or data.channel.kind != options.kind: return {}
@@ -80,10 +80,12 @@ static func envelope(raw: String, kind: String, user: String, id: String = "", o
 				if data.channel.peerIds != peers: return {}
 			elif options.kind == "group" and data.channel.groupId != options.groupId: return {}
 		"sync":
-			if not channel(data.get("channel"), id) or (data.channel.kind == "direct" and user not in data.channel.peerIds) or not ids(data.get("visibleMessageIds")) or not data.get("messages") is Array or data.messages.size() > 100 or not moderation(data.get("moderation")): return {}
+			if not channel(data.get("channel"), id) or (data.channel.kind == "direct" and user not in data.channel.peerIds) or not ids(data.get("visibleMessageIds")) or not data.get("messages") is Array or data.messages.size() > (20 if data.channel.kind == "project" else 15) or not moderation(data.get("moderation")): return {}
+			if data.visibleMessageIds.size() > (20 if data.channel.kind == "project" else 15): return {}
 			var seen: Dictionary = {}
 			for row: Variant in data.messages:
 				if not message(row, id) or seen.has(row.id) or row.id not in data.visibleMessageIds or (data.channel.kind == "direct" and row.authorId not in data.channel.peerIds) or millis(row.expiresAt) <= millis(data.serverTime): return {}
+				if millis(row.expiresAt) - millis(row.createdAt) > (RETENTION_MILLIS if data.channel.kind == "project" else 30000): return {}
 				seen[row.id] = true
 		"send", "operation":
 			if not receipt(data.get("receipt")) or data.receipt.operationId != options.operationId: return {}

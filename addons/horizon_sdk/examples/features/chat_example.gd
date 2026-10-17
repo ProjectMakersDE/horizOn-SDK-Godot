@@ -86,12 +86,22 @@ func inspect_pending() -> Dictionary:
 	if loaded.pending.is_empty(): return _fail("NO_PENDING_ACTION")
 	var intent: Dictionary = loaded.pending
 	var context: String = _context(h)
+	var history_binding: Dictionary = h.chat._historyBinding(intent.channelId)
 	_busy = true
 	var result: Dictionary = await h.chat.getOperation(_user(h), intent.operationId)
 	_busy = false
 	if not _same(h, context): return _fail("STALE_RESPONSE")
+	if result.success and result.data.receipt.channelId == intent.channelId and result.data.receipt.issuedAt == intent.issuedAt:
+		var receipt: Dictionary = result.data.receipt
+		h.chat._archive(intent.channelId, [{"id": receipt.messageId, "channelId": intent.channelId, "authorId": intent.userId, "text": intent.text, "createdAt": receipt.createdAt, "expiresAt": receipt.expiresAt}], history_binding)
 	if result.success and not Pending.confirm(h._http.apiKey, _user(h), intent, result.data.receipt): return _fail("PENDING_STORAGE_ERROR")
 	return result
+func local_history(cursor: String = "") -> Dictionary:
+	var h: Node = _authorized()
+	return h.chat.readLocalHistory(_channel, cursor) if h != null and not _channel.is_empty() else _fail("SESSION_REQUIRED")
+func clear_local_history() -> Dictionary:
+	var h: Node = _authorized()
+	return h.chat.clearLocalHistory(_channel) if h != null and not _channel.is_empty() else _fail("SESSION_REQUIRED")
 func report(message_id: String, original_reason: String) -> Dictionary:
 	var h: Node = _authorized()
 	if h == null: return _fail("SESSION_REQUIRED")

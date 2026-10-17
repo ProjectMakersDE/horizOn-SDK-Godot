@@ -1383,8 +1383,8 @@ after any uncertain result; never replace them to retry. `getServerTime()` gives
 the latest accepted server time plus elapsed monotonic time for a new intent.
 Receipt responses contain metadata, not text. A missing or expired operation
 does not prove that the original never committed. Reports retain their original
-channel/message/reason; `removed` is successful replay metadata and
-`REPORT_EXPIRED` does not authorize a replacement. Plain text permits LF/TAB,
+channel/message/reason. Reports deduplicate only while the server retains the shared report.
+Local history alone cannot establish a missing server message for a report. Plain text permits LF/TAB,
 at most500 Unicode scalars/2000 UTF-8 bytes, and rejects other control characters.
 Render it as plain text with markup disabled. PHP surfaces501 `NOT_SUPPORTED`.
 
@@ -1401,7 +1401,7 @@ operation first and never automatically generates another identity or send.
 The game must separately handle any blocked journal through explicit recovery.
 
 Native fixtures use actual HTTP and WebSocket connections for first-message push,
-100-ID incremental snapshots, permissions/reconnect, one-attempt faults and original
+20-ID incremental snapshots, permissions/reconnect, one-attempt faults and original
 lost-ACK recovery. These local proofs are distinct from hosted two-player,
 fanout/CPU/storage measurements and official game integration.
 
@@ -1414,3 +1414,39 @@ never merges into the managed feed, owns no watch, updates no feed clock and sch
 or polling. Host/project/session generation changes reject late replies. Keep `watchChannel`
 and acknowledged `syncChannel` for interactive managed feeds.
 Current authenticated401 still clears private feeds; channel denials affect only the captured current watch, so explicit raw reads cannot retain revoked content.
+
+
+### Device Chat history
+
+Hosted Chat is available in every tier, including Free. The server holds at most
+20 project/global messages for seven days, or 15 direct/group transport messages
+for 30 seconds. Private buffers do not promise offline delivery. `knownMessageIds`
+contains at most 20 IDs from the live window, never IDs from the device archive.
+A new operation must be later than the player's accepted issued-at floor and
+server time minus 30 seconds, with at most 60 seconds future tolerance. Operation
+lookup/replay uses the original message while it remains buffered. There is no
+personal server receipt history. Missing operations remain uncertain. No send is
+retried automatically, including after a local storage failure.
+
+`Horizon.chat.readLocalHistory(channel_id, cursor = "", limit = 50)` returns
+`{success,messages,nextCursor}` or a local `errorCode`. `clearLocalHistory(channel_id)`
+and `clearAllLocalHistory()` explicitly erase only the current identity's device
+copies. Listen to `local_history_changed(channel_id)` and
+`local_history_failed(channel_id, code)`. The sample offers separate live and device
+views plus read/older/clear controls and an optional channel UUID for offline reads.
+
+The archive stores received immutable text and confirmed original send input. Its
+scope hashes the API key and player, with one append-only UTF-8 JSONL log and one
+append-only ID/hash/offset index per channel. No key or session token is stored in
+plaintext. Only the small ID index is loaded on first use, then its appended tail.
+Text reads are bounded per record (16 KiB) and page (at most 100 messages). Byte
+cursors follow local delivery order, with each page in forward delivery order.
+An interrupted complete log append can repair its missing final index entry.
+Damaged/locked/unwritable storage reports a local error and never resends a message.
+
+Server eviction, expiry, moderation, epoch changes and revoked membership retain
+already delivered device copies. The active feed still hides immediately. Same-identity
+authenticated offline reads are allowed. Logout and project/player changes remove
+access in memory. Captured request identity and persistent clear generations fence
+late replies. Clear invalidates prior page cursors. A new device has no old archive,
+and the SDK neither uploads it nor uses Cloud Save. There is no implicit local cap.

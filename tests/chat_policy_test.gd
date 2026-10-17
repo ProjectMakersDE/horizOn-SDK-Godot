@@ -34,6 +34,13 @@ func run() -> void:
 	check(HorizonChatModels.parse('{"revision":1,"revi\\u0073ion":2}').is_empty(), "duplicate decoded fields rejected")
 	check(HorizonChatModels.parse('{"text":"\\ud800"}').is_empty(), "invalid surrogate rejected")
 	var bad: Dictionary = snapshot(1)
+	check(HorizonChatModels.envelope(HorizonSharedObjectModels.encode(snapshot(21)), "sync", U, C).is_empty(), "project snapshot cannot exceed twenty")
+	var private_snapshot: Dictionary = snapshot(15)
+	private_snapshot.channel.kind = "group"; private_snapshot.channel.groupId = U
+	for row: Dictionary in private_snapshot.messages: row.expiresAt = "2026-10-16T12:00:30.000Z"
+	check(not HorizonChatModels.envelope(HorizonSharedObjectModels.encode(private_snapshot), "sync", U, C).is_empty(), "private transport allows fifteen rows for thirty seconds")
+	private_snapshot.messages[0].expiresAt = "2026-10-16T12:00:31.000Z"
+	check(HorizonChatModels.envelope(HorizonSharedObjectModels.encode(private_snapshot), "sync", U, C).is_empty(), "private transport cannot extend thirty-second server availability")
 	bad.messages[0].text = HorizonItemStringData._fromParts(PackedStringArray(["before", "after"]), '"before\\u0000after"')
 	check(HorizonChatModels.envelope(HorizonSharedObjectModels.encode(bad), "sync", U, C).is_empty(), "NUL text never silently truncated")
 	bad = snapshot(1); bad.channel.erase("groupId")
@@ -42,14 +49,14 @@ func run() -> void:
 	check(HorizonChatModels.envelope(HorizonSharedObjectModels.encode(bad), "sync", U, C).is_empty(), "duplicate visible ID rejected")
 	var chat := HorizonChat.new()
 	root.add_child(chat)
-	var original: Dictionary = snapshot(100)
-	check(chat._merge(C, original, {}).messages.size() == 100, "full hundred-row cache")
+	var original: Dictionary = snapshot(20)
+	check(chat._merge(C, original, {}).messages.size() == 20, "full twenty-row cache")
 	chat._record(C, original)
-	var delta: Dictionary = snapshot(100, 2); delta.messages = []
-	check(chat._merge(C, delta, original).messages.size() == 100, "known hundred IDs need no payload reload")
-	delta.visibleMessageIds.pop_front(); delta.visibleMessageIds.append(message(100).id); delta.messages = [message(100)]
+	var delta: Dictionary = snapshot(20, 2); delta.messages = []
+	check(chat._merge(C, delta, original).messages.size() == 20, "known twenty IDs need no payload reload")
+	delta.visibleMessageIds.pop_front(); delta.visibleMessageIds.append(message(20).id); delta.messages = [message(20)]
 	var merged: Dictionary = chat._merge(C, delta, original)
-	check(merged.messages.size() == 100 and merged.messages[0].id == message(1).id and merged.messages[-1].id == message(100).id, "atomic removal plus one unknown payload in full order")
+	check(merged.messages.size() == 20 and merged.messages[0].id == message(1).id and merged.messages[-1].id == message(20).id, "atomic removal plus one unknown payload in full order")
 	bad = delta.duplicate(true); bad.messages.clear()
 	check(chat._merge(C, bad, original).is_empty(), "missing unknown payload fails closed")
 	bad = delta.duplicate(true); bad.messages.append(message(1))
