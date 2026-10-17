@@ -35,8 +35,8 @@ func ok(value: bool) -> void:
 func summary() -> Dictionary: return {"id":I,"name":"opaque é/😀","revision":1,"creatorId":U,"capacity":2,"visibility":"private","strength":-9007199254740991,"status":"lobby","participantIds":[U],"invitedIds":[V],"forfeitedIds":[],"currentPlayerId":null,"turnDeadline":null,"createdAt":T,"startedAt":null,"finishedAt":null,"purgeAt":null,"finalStateRevision":null,"hasDisagreement":false,"ranked":false,"timeoutDue":false}
 func view() -> Dictionary: return summary().merged({"turnOrder":[],"turnSeconds":60,"timeoutPolicy":"skip","dataBase64":"AP8AgA==","reports":[],"reportDeadline":null,"absoluteDeadline":null,"rankedLeaderboardKey":null,"ownRankedRunId":null,"notificationPending":false})
 func point() -> Dictionary: return {"match":view(),"pollAfterSeconds":120,"serverTime":T}
-func caps() -> Dictionary: return {"activeMatches":2,"stateBytes":1024,"retainedMatches":20,"pendingInvites":20}
-func mine() -> Dictionary: return {"userId":U,"revision":4294967296,"active":[summary()],"invites":[],"recent":[],"limits":caps(),"pollAfterSeconds":120,"serverTime":T}
+func caps() -> Dictionary: return {"activeMatches":2,"stateBytes":1024,"retainedMatches":20,"pendingInvites":20,"settlementMatches":20,"historyRetentionSeconds":604800,"rankedSettlementSeconds":604800}
+func mine() -> Dictionary: return {"userId":U,"revision":4294967296,"active":[summary()],"invites":[],"pendingResults":[],"recent":[],"limits":caps(),"pollAfterSeconds":120,"serverTime":T}
 func options() -> Dictionary: return {"name":"opaque é/😀","capacity":2,"visibility":"private","strength":-9007199254740991,"turnSeconds":60,"timeoutPolicy":"skip","ranked":false,"dataBase64":"AP8AgA==","inviteeIds":[V]}
 func run() -> Dictionary: return {"runId":RUN,"ticket":"original-opaque-ticket","seed":42,"leaderboardKey":"ranked","issuedAt":T,"expiresAt":"2026-10-16T12:30:00Z","expiresInSeconds":1800}
 func _initialize() -> void:
@@ -53,7 +53,7 @@ func _run() -> void:
 	var large := PackedByteArray()
 	large.resize(8192)
 	ok(Models.decodeBytes(Models.encodeBytes(large)).size() == 8192)
-	large.resize(8193)
+	large.resize(Models.STATE_BYTES + 1)
 	ok(Models.decodeBytes(Models.encodeBytes(large)) == null)
 	for space: int in [0x09,0x1c,0x00a0,0x1680,0x2007,0x202f,0x3000]: ok(not Models.text(String.chr(space),120,true))
 	ok(Models.text(String.chr(0x85),120,true)) # JVM does not classify NEL as a blank character.

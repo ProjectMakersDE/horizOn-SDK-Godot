@@ -84,7 +84,7 @@ func _run() -> void:
 	var retained: Dictionary = row()
 	retained.dataBase64 = Marshalls.raw_to_base64(large)
 	ok(Models.object(retained, "world").data.size() == 65536) # Retained data may exceed current2KiB tier.
-	large.resize(65537)
+	large.resize(1048577)
 	ok(Models.decodeBytes(Marshalls.raw_to_base64(large)) == null)
 	ok(Models.usage(usage(), "world", U))
 	var point: Dictionary = {"object": row(), "pollAfterSeconds": 120, "serverTime": T}

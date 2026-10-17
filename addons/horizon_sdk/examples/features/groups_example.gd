@@ -13,10 +13,10 @@ func inspect_group(group_id: String) -> Dictionary:
 
 ## Render each page with its revision. If it changes, ask for an explicit restart.
 ## This never drains every page or promises one snapshot across multiple HTTP calls.
-func load_member_page(group_id: String, after_user_id: String = "") -> Dictionary:
+func load_member_page(group_id: String, after_user_id: String = "", limit: int = 50) -> Dictionary:
 	var horizon: Node = _authorized()
 	if horizon == null: return _failure("SESSION_REQUIRED")
-	return await horizon.groups.getMembers(horizon.auth.getCurrentUser().userId, group_id, after_user_id, 50)
+	return await horizon.groups.getMembers(horizon.auth.getCurrentUser().userId, group_id, after_user_id, limit)
 
 func load_pending(group_id: String) -> Dictionary:
 	var horizon: Node = _authorized()

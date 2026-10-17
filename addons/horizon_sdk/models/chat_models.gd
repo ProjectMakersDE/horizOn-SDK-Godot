@@ -62,7 +62,9 @@ static func limits(value: Variant) -> bool:
 	if not fields(value, ["retainedMessagesPerPlayer", "retainedMessagesPerChannel", "retentionSeconds", "privateRetainedMessagesPerChannel", "privateRetentionSeconds", "operationWindowSeconds", "operationFutureToleranceSeconds", "messageCharacters", "messageUtf8Bytes", "channelsPerAccount", "sendsPerAccountMinute", "playerSendIntervalMillis", "channelSendIntervalMillis", "reportsPerProject", "receiptCount", "reportReceiptCount", "wordFilterTerms"]): return false
 	for key: String in value:
 		if not integer(value[key]): return false
-	return value.retainedMessagesPerPlayer == 0 and value.retainedMessagesPerChannel == 20 and value.privateRetainedMessagesPerChannel == 15 and value.privateRetentionSeconds == 30 and value.operationWindowSeconds == 30 and value.operationFutureToleranceSeconds == 60 and value.retentionSeconds == 604800 and value.messageCharacters == 500 and value.messageUtf8Bytes == 2000 and value.channelsPerAccount <= 2000 and value.sendsPerAccountMinute <= 120 and value.reportsPerProject <= 200 and value.receiptCount == 0 and value.reportReceiptCount == 0 and value.wordFilterTerms == 100
+	for key: String in ["channelsPerAccount", "sendsPerAccountMinute", "reportsPerProject"]:
+		if value[key] > 2147483647: return false # Zero explicitly disables the configured capacity.
+	return value.retainedMessagesPerPlayer == 0 and value.retainedMessagesPerChannel == 20 and value.privateRetainedMessagesPerChannel == 15 and value.privateRetentionSeconds == 30 and value.operationWindowSeconds == 30 and value.operationFutureToleranceSeconds == 60 and value.retentionSeconds == 604800 and value.messageCharacters == 500 and value.messageUtf8Bytes == 2000 and value.receiptCount == 0 and value.reportReceiptCount == 0 and value.wordFilterTerms == 100
 static func parse(raw: String) -> Dictionary: return HorizonItemModels.parse(raw, 1048576)
 static func envelope(raw: String, kind: String, user: String, id: String = "", options: Dictionary = {}) -> Dictionary:
 	var data: Dictionary = parse(raw)

@@ -933,7 +933,10 @@ email, tokens, activity or another player's private blocklist. Successful reads 
 replace the complete own-player snapshot: `{userId,revision,friendCode,friends,incoming,
 outgoing,blocked,limits,serverTime}`. Nullable display fields remain null; `lastActiveAt:null`
 means no retained login is known. A login timestamp is never an online/offline indicator.
-Retained friends above the current tier remain readable after a downgrade. Returned dictionaries
+The four positive Int32 `limits` values come from Admin System Config; the former
+200/20/20/100 defaults are not reader ceilings. Retained friends, requests and blocks
+remain readable after lowering those limits. Legacy `since` and request `createdAt`
+may be absent or null; the SDK preserves that unknown timestamp as null. Returned dictionaries
 are copies; local edits do not modify the retained snapshot.
 
 All seven mutations use exactly one transport attempt, including global 429, 503 and timeout.
@@ -988,9 +991,11 @@ if own.success:
 
 `createGroup(user,expected_player_revision,name,description="",join_mode="open",data={})`
 accepts no caller group ID. `updateGroup(user,group,expected_revision,name,description,join_mode,data)`
-replaces every metadata field. Both use JSON objects (including empty `{}`), finite
-numbers, depth16 and at most2048 serialized UTF-8 bytes; names120/description1024
-UTF-8 bytes. Dotted, empty and dollar-prefixed data keys and decimal data fields
+replaces every metadata field. Both use JSON objects (including empty `{}`) and finite
+numbers. Current name, description, data-byte and data-depth policies are server
+System Config values; old120/1024/2048-byte and depth16 defaults are not SDK ceilings.
+Godot's independent JSON/Variant serialization boundary is1024 nested containers.
+Dotted, empty and dollar-prefixed data keys and decimal data fields
 remain legal. `GroupView.data` is a `HorizonGroupJsonData` value containing original
 JSON text, including large integers and high-precision number lexemes; only
 insignificant whitespace outside string values is removed. Pass that
@@ -999,7 +1004,8 @@ lossless; `getPreview()` creates a fresh display dictionary using Godot numbers 
 may round values, so never use that preview for an unchanged roundtrip. Create/update
 accept either a new Dictionary (serialized once at full engine precision) or
 `HorizonGroupJsonData.fromJson(original_json)`. The wrapper has no public mutation
-method; invalid JSON/duplicate keys/size/depth/nonfinite values are rejected. Protocol revisions/counts require exact safe integer wire lexemes.
+method; invalid JSON, duplicate keys, engine-depth overflow and nonfinite values are rejected.
+Protocol revisions/counts require exact safe integer wire lexemes.
 
 All fourteen actions begin `(user_id,group_id,expected_revision)`:
 
@@ -1023,8 +1029,13 @@ advance freshness floors. Project/host/session ABA, queued work, signout and
 synchronous callbacks fence old responses. Detail freshness memory is bounded48
 records; own-player revision/server-time floors survive explicit cache clears.
 
-Global retained maxima500 members/5 memberships and20 invitations/requests remain
-readable after a smaller tier is applied. Server limits and role/block checks are
+All eleven `limits` fields are positive Int32 System Config values:
+`maxMembers`, `maxGroupsPerPlayer`, `maxInvitations`, `maxJoinRequests`, `maxDataBytes`,
+`memberPageSize`, `maxPlayerInvitations`, `maxPlayerRequests`, `maxNameBytes`,
+`maxDescriptionBytes`, `maxDataDepth`. Retained memberships and pending lists are
+read completely after lowering policy. Legacy pending `createdAt` is nullable or absent.
+An explicit member-page limit follows current server policy;50 is a request default.
+Server limits and role/block checks are
 authoritative. A full Inbox error stays atomic at the server and is returned for an
 explicit UI decision. Sole-leader deletion cannot dismantle a nonempty group;
 transfer leadership before leaving. No group currency, hidden reads or admin write
@@ -1164,8 +1175,10 @@ Signatures (all async calls return `Dictionary`):
 
 Collections use one permanent read/write schema. Configure collections through the
 Dashboard/Account Key or self-hosted CLI. Returned definitions and existing objects
-can exceed a downgraded current tier; the SDK preserves them within the global
-64KiB object bound. Bytes remain exact, including empty data/NUL/high-bit values.
+can exceed a lowered current policy; the SDK preserves them within the physical
+1MiB decoded-object bound (1,398,104 canonical Base64 characters). Collection count,
+owner-object count and storage are current System Config values, without the former
+100-object/2GiB/64KiB parser ceilings. Bytes remain exact, including empty data/NUL/high-bit values.
 Every object preserves `dataBase64` and adds decoded `data:PackedByteArray`.
 `groupId`, `position` and `expiresAt` remain null when absent, and empty `search`
 remains `{}`. Collection catalog pages keep the original revision across explicit
@@ -1276,6 +1289,24 @@ or client-authored rewards occur. An active match can appear in `recent` after t
 current player forfeits while other players continue.
 
 The executable [`matches_example.gd`](addons/horizon_sdk/examples/features/matches_example.gd)
+can explicitly call `recover_pending_ranked_result(match_id)` after `read_matches()`.
+The ledger's `pendingResults` contains only `matchId`, `finalStateRevision`, nullable
+`ownRankedRunId` and `expiresAt`. This original source reference can recover the same
+ranked run when full match detail is gone; it never recreates a match, result or reward.
+Failure keeps the durable original for `retry_original_report_or_run()`.
+
+All seven current `limits` fields are retained: `activeMatches`, `stateBytes`,
+`retainedMatches`, `pendingInvites`, `settlementMatches`, `historyRetentionSeconds`,
+`rankedSettlementSeconds`. They are Int32 System Config values; retained count and
+history seconds may be zero. Old10/100/20 defaults do not cap returned lists.
+The independent BSON/Jackson envelope permits at most14,648KiB decoded state
+(19,999,404 Base64 characters). Match responses use the shared lossless grammar
+without the obsolete512KiB feature frame. `getMatches()` returns projected summaries
+and minimal pending references with no cursor; no fixed response-byte size is claimed
+to cover every configurable retained-list cardinality. HTTP/engine resources remain
+the transport boundary; the SDK neither truncates arrays nor drains hidden pages.
+
+The executable sample
 uses a separate signed-in client for each of two players: read ledger, persist
 create with original ledger revision, invite/accept/start, alternate byte-state
 turns, finish, then collect both immutable result reports. A missing report leaves
@@ -1327,6 +1358,11 @@ reports, one-attempt faults, recovery and common VA start/submit ownership; thes
 are local contract proofs, separate from hosted capacity measurements.
 
 ### Chat: HTTP commands and push snapshots
+
+The current configurable `channelsPerAccount`, `sendsPerAccountMinute` and
+`reportsPerProject` values accept the full nonnegative Int32 range, including zero.
+Former2000/120/200 defaults are not parser ceilings. Fixed message encoding,
+retention and operation-window protocol fields retain their separate validation.
 
 `Horizon.chat` returns `{success, data, errorCode, error}` for all six REST methods.
 Every method starts with the current signed-in `user_id`; identifiers must be

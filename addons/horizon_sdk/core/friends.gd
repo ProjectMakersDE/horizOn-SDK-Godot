@@ -149,12 +149,12 @@ func _normalize(raw: Variant, user_id: String) -> Dictionary:
 	for field: String in ["maxFriends", "maxIncomingRequests", "maxOutgoingRequests", "maxBlocked"]:
 		if not _nonnegative(raw.limits.get(field)): return {}
 		limits[field] = int(raw.limits[field])
-	if limits.maxFriends not in range(1, 201) or limits.maxIncomingRequests != 20 or limits.maxOutgoingRequests != 20 or limits.maxBlocked != 100: return {}
+	for limit: int in limits.values():
+		if limit < 1 or limit > 2147483647: return {} # Positive Int32 operator configuration.
 	var result: Dictionary = {"userId": user_id, "revision": int(raw.revision), "friendCode": raw.friendCode, "limits": limits, "serverTime": raw.serverTime}
 	for field: String in ["friends", "incoming", "outgoing", "blocked"]:
 		var rows: Variant = raw.get(field)
-		var cap: int = 200 if field == "friends" else (100 if field == "blocked" else 20)
-		if not rows is Array or rows.size() > cap: return {}
+		if not rows is Array: return {} # Retained relationships survive current-limit reductions.
 		var normalized: Array = []
 		var seen: Dictionary = {}
 		for row: Variant in rows:
@@ -169,13 +169,13 @@ func _normalize(raw: Variant, user_id: String) -> Dictionary:
 				if display.is_empty(): return {}
 				entry.display = display
 				if field == "friends":
-					if not _time(row.get("since")) or (row.get("lastActiveAt") != null and not _time(row.lastActiveAt)): return {}
-					entry.since = row.since
+					if (row.get("since") != null and not _time(row.since)) or (row.get("lastActiveAt") != null and not _time(row.lastActiveAt)): return {}
+					entry.since = row.get("since")
 					entry.lastActiveAt = row.get("lastActiveAt")
 				else:
-					if not _validUuid(row.get("requestId")) or not _time(row.get("createdAt")): return {}
+					if not _validUuid(row.get("requestId")) or (row.get("createdAt") != null and not _time(row.createdAt)): return {}
 					entry.requestId = row.requestId
-					entry.createdAt = row.createdAt
+					entry.createdAt = row.get("createdAt")
 			normalized.append(entry)
 		result[field] = normalized
 	return result

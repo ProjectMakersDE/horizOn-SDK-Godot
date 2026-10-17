@@ -9,7 +9,7 @@ class FakeManager extends RefCounted:
 	var revision: int = 4294967296
 	var uncertain: bool = false
 	var hook: Callable
-	func getMatches(_user: String,_recovery: bool=false) -> Dictionary: return {"success":true,"data":{"revision":revision,"active":[],"invites":[],"recent":[]}}
+	func getMatches(_user: String,_recovery: bool=false) -> Dictionary: return {"success":true,"data":{"revision":revision,"active":[],"invites":[],"recent":[],"pendingResults":[]}}
 	func createMatch(_user: String,_revision: int,_options: Dictionary) -> Dictionary:
 		calls += 1
 		revision += 1
