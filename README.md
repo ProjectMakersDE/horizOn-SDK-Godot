@@ -1530,3 +1530,10 @@ The complete native transport gate includes all ten real HTTP routes, more than
 2,048 retained open listings after quota lowering, original bytes on retry,
 known-result restart and original escrow claim/discard/replay. Its artificial
 loopback fixture is not evidence of a hosted deployment or an exported Web game.
+
+The Groups example's `load_member_page(groupId, afterUserId)` derives its default
+size from the current authenticated `getCurrentGroups().limits.memberPageSize`.
+Read own Groups first; missing or stale auth-context limits cause no member request.
+A changed default size restarts from the first page and returns `restarted: true`.
+An explicit third argument stays unchanged on the wire. A continuation without a
+known original page or with a changed revision requires an explicit page restart.
