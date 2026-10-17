@@ -4,6 +4,8 @@ extends Node
 signal channel_changed(channel_id: String, snapshot: Dictionary)
 signal channel_hidden(channel_id: String)
 signal chat_failed(error: String, code: String)
+signal local_history_changed(channel_id: String)
+signal local_history_failed(channel_id: String, code: String)
 const ENDPOINT := "/api/v1/app/chat"
 const MAX_WATCHES := 8
 var _http: HorizonHttpClient
@@ -15,6 +17,8 @@ var _cache: Dictionary = {}
 var _floors: Dictionary = {}
 var _serial: int = 0
 var _clearing: bool = false
+var _history: HorizonChatHistory
+var _historyIdentity: String = ""
 var _serverMillis: int = -1
 var _clockMillis: int = -1
 var _clockTicks: int = 0
@@ -46,7 +50,14 @@ func openChannel(user_id: String, kind: String, peer_id: String = "", group_id: 
 	return await _request(user_id, "open", "", options)
 func sendMessage(user_id: String, channel_id: String, operation_id: String, issued_at: String, text: String) -> Dictionary:
 	if not HorizonChatModels.uuid(channel_id) or not HorizonChatModels.uuid(operation_id) or not HorizonChatModels.time(issued_at) or not HorizonChatModels.text(text): return _fail("INVALID_REQUEST")
-	return await _request(user_id, "send", channel_id, {"operationId": operation_id, "issuedAt": issued_at, "text": text})
+	var binding: Dictionary = _historyBinding(channel_id)
+	var result: Dictionary = await _request(user_id, "send", channel_id, {"operationId": operation_id, "issuedAt": issued_at, "text": text})
+	if result.success:
+		var receipt: Dictionary = result.data.receipt
+		_archive(channel_id, [{"id": receipt.messageId, "channelId": channel_id, "authorId": user_id, "text": text, "createdAt": receipt.createdAt, "expiresAt": receipt.expiresAt}], binding)
+		_syncScope()
+		if binding.is_empty() or binding.scope != _scope: return _fail("STALE_RESPONSE")
+	return result
 func getOperation(user_id: String, operation_id: String) -> Dictionary:
 	if not HorizonChatModels.uuid(operation_id): return _fail("INVALID_REQUEST")
 	return await _request(user_id, "operation", "", {"operationId": operation_id})
@@ -92,10 +103,43 @@ func getCached(channel_id: String) -> Dictionary:
 func getServerTime() -> String:
 	_syncScope()
 	return "" if _clockMillis < 0 else HorizonChatModels.stamp(_effectiveMillis())
+## Previously delivered device copies. Server expiry and permission changes do not erase them.
+func readLocalHistory(channel_id: String, cursor: String = "", limit: int = 50) -> Dictionary:
+	var binding: Dictionary = _historyBinding(channel_id)
+	if binding.is_empty(): return {"success": false, "errorCode": "SESSION_REQUIRED"}
+	return _historyResult(channel_id, _history.read_page(channel_id, cursor, limit))
+func clearLocalHistory(channel_id: String) -> Dictionary:
+	if _historyBinding(channel_id).is_empty(): return {"success": false, "errorCode": "SESSION_REQUIRED"}
+	var result: Dictionary = _historyResult(channel_id, _history.clear(channel_id))
+	if result.success: local_history_changed.emit(channel_id)
+	return result
+func clearAllLocalHistory() -> Dictionary:
+	_syncScope()
+	if not _session() or _history == null: return {"success": false, "errorCode": "SESSION_REQUIRED"}
+	var result: Dictionary = _historyResult("", _history.clear())
+	if result.success: local_history_changed.emit("")
+	return result
+func _historyBinding(channel: String) -> Dictionary:
+	_syncScope()
+	return {"store": _history, "generation": _history.capture(channel), "scope": _scope.duplicate()} if _session() and HorizonChatModels.uuid(channel) and _history != null else {}
+func _archive(channel: String, messages: Array, binding: Dictionary) -> void:
+	_syncScope()
+	if binding.is_empty() or binding.scope != _scope or binding.store != _history: return
+	var changed: bool = false
+	for message: Dictionary in messages:
+		_syncScope()
+		if binding.scope != _scope or binding.store != _history: return
+		var result: Dictionary = _historyResult(channel, binding.store.append(channel, message, binding.generation))
+		if result.success: changed = changed or result.get("changed", false)
+	if changed: local_history_changed.emit(channel)
+func _historyResult(channel: String, result: Dictionary) -> Dictionary:
+	if not result.success and result.errorCode != "LOCAL_HISTORY_STALE": local_history_failed.emit(channel, result.errorCode)
+	return result
 ## One explicit raw REST read, including disconnected capability checks. Never adopts a feed.
 ## Empty epoch encodes null. Known IDs describe only the caller's original complete snapshot.
 func requestChannelSnapshot(user_id: String, channel_id: String, epoch: String = "", known_message_ids: Array[String] = []) -> Dictionary:
 	if not HorizonChatModels.uuid(channel_id) or (not epoch.is_empty() and not HorizonChatModels.uuid(epoch)) or not HorizonChatModels.ids(known_message_ids): return _fail("INVALID_REQUEST")
+	var binding: Dictionary = _historyBinding(channel_id)
 	var original: Dictionary = {"epoch": null if epoch.is_empty() else epoch, "knownMessageIds": known_message_ids.duplicate()}
 	var result: Dictionary = await _request(user_id, "sync", channel_id, original, true)
 	result.erase("_httpStatus")
@@ -107,6 +151,9 @@ func requestChannelSnapshot(user_id: String, channel_id: String, epoch: String =
 		returned[row.id] = true
 	for id: String in result.data.visibleMessageIds:
 		if not returned.has(id) and id not in known: return _fail("INVALID_RESPONSE")
+	_archive(channel_id, result.data.messages, binding)
+	_syncScope()
+	if binding.is_empty() or binding.scope != _scope: return _fail("STALE_RESPONSE")
 	return result
 ## Explicit read is allowed only on an acknowledged current subscription, never offline fallback.
 func syncChannel(user_id: String, channel_id: String) -> Dictionary:
@@ -121,6 +168,7 @@ func syncChannel(user_id: String, channel_id: String) -> Dictionary:
 	var authorization: int = watch.authorization
 	_prune(channel_id)
 	var original: Dictionary = _cache.get(channel_id, {}).duplicate(true)
+	var binding: Dictionary = _historyBinding(channel_id)
 	var options: Dictionary = {"epoch": original.channel.epoch if not original.is_empty() else null, "knownMessageIds": original.visibleMessageIds.duplicate() if not original.is_empty() else []}
 	var result: Dictionary = await _request(user_id, "sync", channel_id, options)
 	if not _watches.has(channel_id) or _watches[channel_id].serial != serial: return _fail("STALE_RESPONSE")
@@ -132,6 +180,9 @@ func syncChannel(user_id: String, channel_id: String) -> Dictionary:
 		else:
 			_cache[channel_id] = complete
 			_record(channel_id, complete)
+			_archive(channel_id, complete.messages, binding)
+			_syncScope()
+			if binding.scope != _scope or not _watches.has(channel_id) or _watches[channel_id].serial != serial or authorization != _watches[channel_id].authorization: return _fail("STALE_RESPONSE")
 			result.data = complete.duplicate(true)
 			channel_changed.emit(channel_id, complete.duplicate(true))
 			_syncScope()
@@ -274,6 +325,10 @@ func _syncScope() -> void:
 	var user: HorizonUserData = _auth.getCurrentUser()
 	var current: Dictionary = {"generation": _http.getContextGeneration(), "user": user.userId if user != null else "", "authToken": user.accessToken if user != null else "", "project": _http.apiKey, "host": _http.activeHost, "token": _http.sessionToken}
 	if _scope != current: clearCache(); _scope = current
+	var history_identity: String = JSON.stringify([_http.apiKey, user.userId if user != null else ""]).sha256_text()
+	if history_identity != _historyIdentity:
+		_historyIdentity = history_identity
+		_history = HorizonChatHistory.new(_http.apiKey, user.userId) if user != null and not _http.apiKey.is_empty() else null
 func _playerChanged(_user: HorizonUserData) -> void: clearCache()
 func _fail(code: String, error: String = "") -> Dictionary:
 	var message: String = error if not error.is_empty() else code

@@ -12,10 +12,10 @@ state={'revision':1,'rows':[],'receipts':{},'reports':{},'syncs':[],'mutations':
        'connections':0,'subscriptions':set(),'allowed':True,'socket':None,'failure':None,
        'bad':False,'delay':False,'event':0,'http':0,'unsupported':False,'failOpen':False,'failReport':False,
        'failAuth':False,'lateFailure':False,'lateClock':False}
-LIMITS={'retainedMessagesPerPlayer':50,'retainedMessagesPerChannel':100,'retentionSeconds':604800,
+LIMITS={'retainedMessagesPerPlayer':0,'retainedMessagesPerChannel':20,'retentionSeconds':604800,'privateRetainedMessagesPerChannel':15,'privateRetentionSeconds':30,'operationWindowSeconds':30,'operationFutureToleranceSeconds':60,
  'messageCharacters':500,'messageUtf8Bytes':2000,'channelsPerAccount':500,'sendsPerAccountMinute':60,
  'playerSendIntervalMillis':3000,'channelSendIntervalMillis':2000,'reportsPerProject':150,
- 'receiptCount':100,'reportReceiptCount':32,'wordFilterTerms':100}
+ 'receiptCount':0,'reportReceiptCount':0,'wordFilterTerms':100}
 MOD={'muteUntil':None,'banUntil':None}
 def mid(i):return str(uuid.UUID(int=0x10140000000040008000000000000000+i))
 def row(i,text=None):return {'id':mid(i),'channelId':C,'authorId':U,'text':text or ('plain %d é😀'%i),'createdAt':T,'expiresAt':X}
@@ -97,9 +97,9 @@ class HTTP(BaseHTTPRequestHandler):
    with lock:
     if action=='status':return send_json(self,200,{'syncs':len(state['syncs']),'mutations':len(state['mutations']),'connections':state['connections'],'rows':len(state['rows']),'failure':state['failure']})
     if action=='bulk':
-     state['rows']=[state['rows'][0]]+[row(i)for i in range(1,100)];state['revision']+=1;event()
+     state['rows']=[state['rows'][0]]+[row(i)for i in range(1,20)];state['revision']+=1;event()
     elif action in ['shift','bad']:
-     state['rows']=state['rows'][1:]+[row(100 if action=='shift' else 101)];state['revision']+=1;state['bad']=action=='bad';event()
+     state['rows']=state['rows'][1:]+[row(20 if action=='shift' else 21)];state['revision']+=1;state['bad']=action=='bad';event()
     elif action=='restore':state['bad']=False;resync()
     elif action=='burst':
      state['delay']=True
@@ -114,7 +114,7 @@ class HTTP(BaseHTTPRequestHandler):
     elif action=='late-clock-sync':state['lateClock']=True
     elif action=='short-message':
      short=row(200,'short-lived local expiry');short['expiresAt']='2026-10-16T12:01:00.000Z'
-     state['rows']=(state['rows']+[short])[-100:];state['revision']+=1;event()
+     state['rows']=(state['rows']+[short])[-20:];state['revision']+=1;event()
     elif action=='disconnect':
      sock=state['socket']
      if sock:sock.shutdown(socket.SHUT_RDWR);sock.close();state['socket']=None;state['subscriptions'].clear()
@@ -133,7 +133,7 @@ class HTTP(BaseHTTPRequestHandler):
   with lock:
    if state['unsupported'] and path.startswith(BASE):return send_json(self,501,{'code':'NOT_SUPPORTED','message':'Chat is Cloud only'})
    if state['failAuth'] and path.startswith(BASE):state['failAuth']=False;return send_json(self,401,{'code':'SESSION_REQUIRED','message':'session rejected'})
-   if path==BASE+'/limits?userId='+U and method=='GET':return send_json(self,200,{'limits':LIMITS,'capabilities':{'chat':True,'realtime':True,'incrementalSync':True},'moderation':MOD,'serverTime':T})
+   if path==BASE+'/limits?userId='+U and method=='GET':return send_json(self,200,{'limits':LIMITS,'capabilities':{'chat':True,'realtime':True,'incrementalSync':True,'localHistory':True},'moderation':MOD,'serverTime':T})
    if path==BASE+'/channels/open' and method=='POST':
     state['mutations'].append(('open',copy.deepcopy(body)))
     opened=channel()
@@ -148,7 +148,7 @@ class HTTP(BaseHTTPRequestHandler):
     if not state['allowed'] or 'chat:'+C not in state['subscriptions']:raise ValueError('sync before current authorized subscription')
     if set(body)!={'userId','epoch','knownMessageIds'}or body['userId']!=U:raise ValueError('wrong sync body')
     known=body['knownMessageIds']if body['epoch']==E else[]
-    if body['epoch']not in[None,E]or len(set(known))!=len(known)or len(known)>100:raise ValueError('bad incremental cache')
+    if body['epoch']not in[None,E]or len(set(known))!=len(known)or len(known)>20:raise ValueError('bad incremental cache')
     # A known ID may have been removed since the previous snapshot; only current unknown rows are loaded.
     rows=copy.deepcopy(state['rows']);payload=[x for x in rows if x['id']not in known]
     if state['bad']:payload=[]
@@ -170,7 +170,7 @@ class HTTP(BaseHTTPRequestHandler):
     if previous:
      if previous['body']!=body:return send_json(self,409,{'code':'OPERATION_CONFLICT','message':'changed original'})
      return send_json(self,200,{'receipt':previous['receipt'],'replayed':True,'serverTime':T})
-    original=row(0 if not state['receipts'] else 1000+len(state['receipts']));original['text']=body['text'];state['rows']=(state['rows']+[original])[-100:];state['revision']+=1
+    original=row(0 if not state['receipts'] else 1000+len(state['receipts']));original['text']=body['text'];state['rows']=(state['rows']+[original])[-20:];state['revision']+=1
     if len({x['id']for x in state['rows']})!=len(state['rows']):raise ValueError('fixture duplicate message identity')
     receipt={'operationId':operation,'issuedAt':body['issuedAt'],'channelId':C,'messageId':original['id'],'createdAt':T,'expiresAt':X}
     state['receipts'][operation]={'receipt':receipt,'body':copy.deepcopy(body)}

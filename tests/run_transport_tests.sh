@@ -78,6 +78,14 @@ run_contract() {
 	ready_file=""
 }
 
+if [[ "${HORIZON_CHAT_ONLY:-0}" == "1" ]]; then
+    run_contract tests/mock_chat_server.py tests/chat_transport_test.gd
+    run_contract tests/mock_chat_snapshot_server.py tests/chat_snapshot_transport_test.gd
+    "$GODOT_BIN" --headless --path . --script tests/chat_policy_test.gd
+    "$GODOT_BIN" --headless --path . --script tests/chat_history_test.gd
+    exit 0
+fi
+
 run_contract tests/mock_cloud_save_server.py tests/cloud_save_transport_test.gd
 run_contract tests/mock_leaderboard_server.py tests/leaderboard_transport_test.gd
 run_contract tests/mock_gift_code_server.py tests/gift_code_transport_test.gd
@@ -107,6 +115,7 @@ run_contract tests/mock_chat_snapshot_server.py tests/chat_snapshot_transport_te
 "$GODOT_BIN" --headless --path . --script tests/matches_policy_test.gd
 "$GODOT_BIN" --headless --path . --script tests/matches_example_test.gd
 "$GODOT_BIN" --headless --path . --script tests/chat_policy_test.gd
+"$GODOT_BIN" --headless --path . --script tests/chat_history_test.gd
 "$GODOT_BIN" --headless --path . --script tests/items_policy_test.gd
 "$GODOT_BIN" --headless --path . --script tests/items_example_test.gd
 

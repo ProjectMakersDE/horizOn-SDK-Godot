@@ -65,23 +65,34 @@ func run() -> void:
 	check(chat.watchChannel(U, C), "subscribe before first feed")
 	await wait_for(func() -> bool: return not chat.getCached(C).is_empty(), "empty channel gets initial real WS resync")
 	check(chat.getCached(C).messages.is_empty(), "empty channel is a complete usable snapshot")
+	var normal_history: HorizonChatHistory = chat._history
+	var io_blocker: String = "user://chat-history-io-blocker"
+	var io_file: FileAccess = FileAccess.open(io_blocker, FileAccess.WRITE); io_file.store_string("test-owned blocker"); io_file.close()
+	var history_errors: Array[String] = []
+	chat.local_history_failed.connect(func(_channel: String, code: String): history_errors.append(code))
+	chat._history = HorizonChatHistory.new(http.apiKey, U, io_blocker)
 	var sent: Dictionary = await chat.sendMessage(U, C, O, T, "hello é😀\n\t<text>")
 	check(sent.success and not sent.data.replayed and not sent.data.receipt.has("text"), "single send stores receipt metadata only")
+	check("LOCAL_HISTORY_IO" in history_errors and sent.success, "real local I/O failure emits separate event while original server send succeeds")
+	chat._history = normal_history
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(io_blocker))
 	await wait_for(func() -> bool: return chat.getCached(C).get("messages", []).size() == 1, "first message pushed into empty channel")
 	var message_id: String = sent.data.receipt.messageId
 	var replay: Dictionary = await chat.sendMessage(U, C, O, T, "hello é😀\n\t<text>")
 	check(replay.success and replay.data.replayed and replay.data.receipt == sent.data.receipt, "identical explicit original send replay")
 	check((await chat.getOperation(U, O)).data.receipt == sent.data.receipt, "original operation status")
+	check(chat.readLocalHistory(C).messages.size() == 1 and chat.readLocalHistory(C).messages[0].text == "hello é😀\n\t<text>", "confirmed original plus push plus explicit replay archives exactly once")
 	check((await chat.reportMessage(U, C, message_id, "original reason é")).success, "report route once")
 	check((await chat.reportMessage(U, C, message_id, "original reason é")).data.replayed, "original report replay")
 	check((await chat.reportMessage(U, C, message_id, "changed reason")).errorCode == "OPERATION_CONFLICT", "changed report cannot replace original")
 	await control("bulk")
-	await wait_for(func() -> bool: return chat.getCached(C).get("messages", []).size() == 100, "hundred-ID incremental snapshot")
+	await wait_for(func() -> bool: return chat.getCached(C).get("messages", []).size() == 20, "twenty-ID incremental snapshot")
 	var first: Dictionary = chat.getCached(C)
 	check(first.messages[0].text == "hello é😀\n\t<text>", "immutable known text retained exactly")
 	await control("shift")
-	await wait_for(func() -> bool: return chat.getCached(C).get("visibleMessageIds", []).size() == 100 and message_id not in chat.getCached(C).visibleMessageIds, "full visible order removes deleted first message")
-	check(chat.getCached(C).messages[-1].text == "plain 100 é😀", "only one unknown payload appended")
+	await wait_for(func() -> bool: return chat.getCached(C).get("visibleMessageIds", []).size() == 20 and message_id not in chat.getCached(C).visibleMessageIds, "full visible order removes deleted first message")
+	check(chat.getCached(C).messages[-1].text == "plain 20 é😀", "only one unknown payload appended")
+	check(chat.readLocalHistory(C).messages.size() == 21 and chat.readLocalHistory(C).messages.any(func(row: Dictionary) -> bool: return row.id == message_id), "server window eviction retains earlier device copy")
 	var denied: String = "00000000-0000-4000-8000-000000003015"
 	check(chat.watchChannel(U, denied), "second channel subscription requested")
 	await wait_for(func() -> bool: return not realtime._topics.has("chat:" + denied), "second channel denied on actual socket")
@@ -90,23 +101,24 @@ func run() -> void:
 	var before: int = int((await control("status")).syncs)
 	await control("burst"); await create_timer(.5).timeout
 	var after: int = int((await control("status")).syncs)
-	check(after > before and after <= before + 2, "hundred metadata events coalesce into inflight plus one dirty sync")
+	check(after > before and after <= before + 2, "twenty metadata events coalesce into inflight plus one dirty sync")
 	before = after; await create_timer(.3).timeout
 	check(int((await control("status")).syncs) == before, "idle produces zero periodic sync")
 	await control("bad")
 	await wait_for(func() -> bool: return "INVALID_RESPONSE" in codes, "partial snapshot fails closed")
 	check(chat.getCached(C).is_empty(), "incomplete new snapshot hides prior text")
 	await control("restore")
-	await wait_for(func() -> bool: return chat.getCached(C).get("messages", []).size() == 100, "fresh resync reloads full authorized text")
+	await wait_for(func() -> bool: return chat.getCached(C).get("messages", []).size() == 20, "fresh resync reloads full authorized text")
 	before = int((await control("status")).syncs)
 	await control("revoke")
 	await wait_for(func() -> bool: return not realtime._topics.has("chat:" + C), "real WS permission revocation")
 	check(chat.getCached(C).is_empty(), "permissions immediately hide cache")
+	check(not chat.readLocalHistory(C).messages.is_empty(), "membership revocation retains same-identity device archive")
 	check((await chat.syncChannel(U, C)).errorCode == "SUBSCRIPTION_REQUIRED", "denied websocket never becomes HTTP fallback")
 	await create_timer(.15).timeout
 	check(int((await control("status")).syncs) == before, "permission denial triggers no unauthorized snapshot")
 	await control("allow"); check(chat.watchChannel(U, C), "explicit subscription recovery")
-	await wait_for(func() -> bool: return chat.getCached(C).get("messages", []).size() == 100, "new authorized subscription reacquires snapshot")
+	await wait_for(func() -> bool: return chat.getCached(C).get("messages", []).size() == 20, "new authorized subscription reacquires snapshot")
 	var connections: int = int((await control("status")).connections)
 	await control("disconnect")
 	await wait_for(func() -> bool: return chat.getCached(C).is_empty(), "disconnect hides text before fresh subscription")
@@ -187,6 +199,18 @@ func run() -> void:
 	http.apiKey = "other-project"; http.apiKey = "chat-key"
 	await wait_for(func() -> bool: return not late.is_empty(), "delayed HTTP completes after project ABA")
 	check(not late.success and late.errorCode == "STALE_RESPONSE", "project ABA rejects late response")
+	http.apiKey = "other-project"
+	check(chat.readLocalHistory(C).messages.is_empty(), "runtime project switch cannot read another key's archive")
+	http.apiKey = "chat-key"
+	var old_user: String = auth._currentUser.userId
+	auth._currentUser.userId = "00000000-0000-4000-8000-000000002014"
+	check(chat.readLocalHistory(C).messages.is_empty(), "runtime player switch cannot read prior player's archive")
+	auth._currentUser.userId = old_user
+	check(not chat.readLocalHistory(C).messages.is_empty(), "same identity resumes its persistent device archive")
+	var old_token: String = http.sessionToken
+	http.sessionToken = ""
+	check(chat.readLocalHistory(C).errorCode == "SESSION_REQUIRED", "logged-out runtime cannot read device archive")
+	http.sessionToken = old_token
 	check((await chat.openChannel(U, "project")).success and chat.watchChannel(U, C), "fresh current context can explicitly subscribe")
 	await wait_for(func() -> bool: return not chat.getCached(C).is_empty(), "fresh authorized snapshot for local expiry")
 	var demo: VBoxContainer = load("res://addons/horizon_sdk/examples/features/chat_demo.tscn").instantiate()
@@ -212,6 +236,7 @@ func run() -> void:
 	chat._nowMillis = func() -> int: return ticks + 61000
 	check(not chat.getCached(C).messages.any(func(row: Dictionary) -> bool: return row.text == "short-lived local expiry") and updates > before_expiry_updates, "individual local expiry emits replacement feed immediately")
 	check(not "short-lived local expiry" in demo._feed.text, "local expiry also clears detached actual UI text")
+	check(chat.readLocalHistory(C).messages.any(func(row: Dictionary) -> bool: return row.text == "short-lived local expiry"), "server expiry never expires local device copies")
 	await wait_for(func() -> bool: return not late_sync.is_empty(), "delayed earlier server snapshot received")
 	check(late_sync.success and not late_sync.data.messages.any(func(row: Dictionary) -> bool: return row.text == "short-lived local expiry"), "delayed response cannot resurrect captured expired text")
 	check(HorizonChatModels.millis(chat.getServerTime()) >= HorizonChatModels.millis(T) + 61000, "effective expiry clock never rewinds to delayed server timestamp")
@@ -224,6 +249,7 @@ func run() -> void:
 	var stats: Dictionary = await control("status")
 	check(stats.failure == null, "fixture saw exact auth/paths/bodies and no hidden polling")
 	await control("finish")
+	check(chat.clearAllLocalHistory().success and chat.readLocalHistory(C).messages.is_empty(), "explicit identity archive clear")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Pending.path(http.apiKey, U)))
 	demo.queue_free(); restarted.queue_free(); h.queue_free(); chat.queue_free(); realtime.queue_free(); http.queue_free()
 	print("Chat actual HTTP+WS/sample: %d checks, %d updates, %d failures" % [checks, updates, failures])
