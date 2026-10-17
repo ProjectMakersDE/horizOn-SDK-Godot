@@ -23,9 +23,9 @@ func record() -> Dictionary:
 func _initialize() -> void:
 	if "crash-child" in OS.get_cmdline_user_args():
 		if not Pending.acquire_send(PROJECT, USER): quit(2); return
-		var marker: FileAccess = FileAccess.open("user://marketplace-crash-ready", FileAccess.WRITE)
-		marker.store_string("ready"); marker.flush(); marker.close()
-		while true: OS.delay_msec(50)
+		OS.kill(OS.get_process_id())
+		quit(3)
+		return
 	if "lease-child" in OS.get_cmdline_user_args():
 		var acquired: bool = Pending.acquire_send(PROJECT, USER)
 		if acquired: Pending.release_send(PROJECT, USER)
@@ -68,19 +68,12 @@ func _initialize() -> void:
 	var output: Array = []
 	check(OS.execute(OS.get_executable_path(), ["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", "res://tests/marketplace_policy_test.gd", "--", "lease-child"], output, true) == 0)
 	Pending.release_send(PROJECT, USER)
-	var child: int = OS.create_process(OS.get_executable_path(), ["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", "res://tests/marketplace_policy_test.gd", "--", "crash-child"])
-	var deadline: int = Time.get_ticks_msec() + 5000
-	while not FileAccess.file_exists("user://marketplace-crash-ready") and Time.get_ticks_msec() < deadline: OS.delay_msec(20)
-	check(child > 0 and FileAccess.file_exists("user://marketplace-crash-ready"))
-	check(not Pending.acquire_send(PROJECT, USER))
-	check(OS.kill(child) == OK)
-	deadline = Time.get_ticks_msec() + 5000
-	while OS.is_process_running(child) and Time.get_ticks_msec() < deadline: OS.delay_msec(20)
-	check(not OS.is_process_running(child))
+	var crash_output: Array = []
+	# Blocking execute reaps its own child; never probe a reaped PID via Godot's waitpid API.
+	check(OS.execute(OS.get_executable_path(), ["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", "res://tests/marketplace_policy_test.gd", "--", "crash-child"], crash_output, true) != 0)
 	check(Pending.acquire_send(PROJECT, USER))
 	check(Pending.load_pending(PROJECT, USER).pending == pending)
 	Pending.release_send(PROJECT, USER)
-	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://marketplace-crash-ready"))
 	var confirmed: Dictionary = pending.duplicate(true); confirmed.phase = "confirmed"; confirmed.confirmed = {"kind": "create", "operationId": OPERATION, "listingId": LISTING}
 	check(Pending.store(PROJECT, USER, confirmed, pending))
 	check(not Pending.confirm(PROJECT, USER, pending))
