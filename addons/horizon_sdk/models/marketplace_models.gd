@@ -75,7 +75,7 @@ static func config(raw: Variant) -> Dictionary:
 	if raw.feeBps != null and (not integer(raw.feeBps) or raw.feeBps > 10000): return {}
 	if raw.enabled and (raw.currencyKey == null or raw.feeBps == null): return {}
 	return {"revision": raw.revision, "enabled": raw.enabled, "currencyKey": raw.currencyKey, "feeBps": raw.feeBps}
-static func reference(raw: Variant) -> Dictionary:
+static func item_reference(raw: Variant) -> Dictionary:
 	if not raw is Dictionary or not uuid(raw.get("instanceId")) or not HorizonItemModels.key(raw.get("itemKey")): return {}
 	return {"instanceId": raw.instanceId, "itemKey": raw.itemKey}
 static func original_item(raw: Variant) -> Dictionary:
@@ -96,10 +96,10 @@ static func listing(raw: Variant) -> Dictionary:
 	if terminal != (raw.item == null) or terminal != (raw.terminalAt != null) or (raw.terminalAt != null and milliseconds(raw.terminalAt) < 0): return {}
 	if (raw.status == "sold") != (raw.buyerId != null): return {}
 	if raw.returnEntryId != null and (not raw.returnEntryId is String or not raw.returnEntryId.begins_with("message:") or not uuid(raw.returnEntryId.trim_prefix("message:"))): return {}
-	var ref: Dictionary = reference(raw.get("itemReference"))
+	var ref: Dictionary = item_reference(raw.get("itemReference"))
 	if ref.is_empty(): return {}
 	var item: Dictionary = {} if raw.item == null else original_item(raw.item)
-	if raw.item != null and (item.is_empty() or reference(item) != ref): return {}
+	if raw.item != null and (item.is_empty() or item_reference(item) != ref): return {}
 	var result: Dictionary = {}
 	for field: String in ["id", "revision", "sellerId", "buyerId", "returnOwnerId", "currencyKey", "price", "feeBps", "feeAmount", "sellerNet", "status", "createdAt", "expiresAt", "terminalAt", "returnEntryId", "ownerUnavailable"]:
 		result[field] = raw[field]
@@ -109,7 +109,7 @@ static func listing(raw: Variant) -> Dictionary:
 static func receipt(raw: Variant) -> Dictionary:
 	if not raw is Dictionary or not uuid(raw.get("operationId")) or not raw.get("kind") in ["create", "buy", "cancel"] or not uuid(raw.get("listingId")) or not integer(raw.get("listingRevision"), 1): return {}
 	if milliseconds(raw.get("issuedAt")) < 0 or milliseconds(raw.get("recordedAt")) < 0 or not currency(raw.get("currencyKey")) or not integer(raw.get("price"), 1) or not integer(raw.get("feeAmount")) or not integer(raw.get("sellerNet")) or raw.feeAmount > raw.price or raw.sellerNet != raw.price - raw.feeAmount: return {}
-	var ref: Dictionary = reference(raw.get("itemReference"))
+	var ref: Dictionary = item_reference(raw.get("itemReference"))
 	if ref.is_empty(): return {}
 	var result: Dictionary = {}
 	for field: String in ["operationId", "issuedAt", "kind", "listingId", "listingRevision", "recordedAt", "currencyKey", "price", "feeAmount", "sellerNet"]:
