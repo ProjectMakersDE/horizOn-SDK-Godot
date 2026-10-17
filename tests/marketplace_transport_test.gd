@@ -1,4 +1,5 @@
 extends SceneTree
+const Quickstart = preload("res://addons/horizon_sdk/examples/features/marketplace_quickstart.gd")
 const Sample = preload("res://addons/horizon_sdk/examples/features/marketplace_example.gd")
 const Pending = preload("res://addons/horizon_sdk/examples/features/pending_marketplace.gd")
 const Models = preload("res://addons/horizon_sdk/models/marketplace_models.gd")
@@ -132,9 +133,8 @@ func _run() -> void:
 	check(DirAccess.remove_absolute(ProjectSettings.globalize_path(Pending.path(PROJECT, SELLER))) == OK)
 	player(h, BUYER)
 	check(h.marketplace.getCurrent("state").is_empty())
-	check((await sample.read_listing(L2)).success)
-	check(sample.review_buy(L2).success)
-	check(not (await sample.confirm_reviewed_trade()).success)
+	check((await Quickstart.read_one_listing(sample, L2)).success)
+	check(not (await Quickstart.buy_reviewed_listing(sample, L2)).success)
 	var buyer_original: Dictionary = Pending.load_pending(PROJECT, BUYER).pending
 	sample.free()
 	sample = actor()
