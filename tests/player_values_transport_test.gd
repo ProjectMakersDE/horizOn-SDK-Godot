@@ -61,6 +61,27 @@ func _run() -> void:
 	if not (await values.getState(USER)).success:
 		_fail("fresh revision and time must load")
 		return
+	var expanded := await values.getOffers(USER)
+	if not expanded.success or expanded.data.definitions.size() != 80 or expanded.data.offers.size() != 1201 or expanded.data.offers[0].get("purchasesPerDay") != null:
+		_fail("configured catalogues above former tariff defaults remain readable without offer-day quotas")
+		return
+	var retained := await values.getState(USER)
+	if not retained.success or retained.state.values.size() != 80:
+		_fail("all configured balances above the old64 ceiling must survive HTTP/cache")
+		return
+	var compact_op: String = OP.replace("1004", "1006")
+	var fresh := await values.purchase(USER, "energy-pack", compact_op)
+	if not fresh.success or fresh.state.operation.replayed or fresh.state.operation.applied.size() != 2:
+		_fail("fresh purchase keeps its original request and immediate applied values")
+		return
+	var replay := await values.purchase(USER, "energy-pack", compact_op)
+	if not replay.success or not replay.state.operation.replayed or replay.state.operation.operationId != compact_op or not replay.state.operation.applied.is_empty() or not replay.state.operation.items.is_empty():
+		_fail("compact replay confirms the same original with no copied historical deltas/references")
+		return
+	var current: Dictionary = values.getCurrentState()
+	if current.values.size() != 80 or current.values[0].balance != 33 or current.values[0].earnedToday != 50 or current.values[0].dailyCap != 0 or not values.getCurrentOffers().is_empty():
+		_fail("current balances survive a lowered cap; replay replaces state and retires older catalogue without polling")
+		return
 	create_timer(.04).timeout.connect(func():
 		auth._currentUser.clear()
 		http.sessionToken = ""
@@ -75,7 +96,7 @@ func _run() -> void:
 		_fail("unsafe and fractional adjustment must fail locally")
 		return
 	await create_timer(1.8).timeout
-	print("Godot player values REST, safe int64, clock, business error and stale response races passed")
+	print("Godot player values REST,80balances/1201offers, compact replay, safe int64, clock and stale response races passed")
 	http.queue_free()
 	quit(0)
 func _fail(message: String) -> void:
