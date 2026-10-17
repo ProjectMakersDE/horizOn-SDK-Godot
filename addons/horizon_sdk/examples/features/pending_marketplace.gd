@@ -1,6 +1,7 @@
 extends RefCounted
 ## One unresolved original, not purchase history. A separate directory lease spans awaited sends.
 const Storage = preload("res://addons/horizon_sdk/examples/features/pending_statistics.gd")
+const Lease = preload("res://addons/horizon_sdk/examples/features/marketplace_lease.gd")
 const Models = preload("res://addons/horizon_sdk/models/marketplace_models.gd")
 static func path(project: String, user: String) -> String:
 	return "user://horizon_marketplace_" + JSON.stringify([project, user]).sha256_text() + ".bin"
@@ -18,16 +19,16 @@ static func load_pending(project: String, user: String) -> Dictionary:
 	return {"success": valid(pending, project, user), "pending": pending if valid(pending, project, user) else {}}
 static func store(project: String, user: String, value: Dictionary, expected: Dictionary = {}) -> bool:
 	var file: String = path(project, user)
-	return Storage._locked(file, func() -> bool:
+	return Lease.locked(file + ".lock", func() -> bool:
 		var loaded: Dictionary = load_pending(project, user)
 		if not valid(value, project, user) or not loaded.success or loaded.pending != expected: return false
 		return Storage._write(file, value.duplicate(true)) and Storage._read(file) == value)
 static func confirm(project: String, user: String, expected: Dictionary) -> bool:
 	var file: String = path(project, user)
-	return Storage._locked(file, func() -> bool:
+	return Lease.locked(file + ".lock", func() -> bool:
 		var loaded: Dictionary = load_pending(project, user)
 		return loaded.success and not expected.is_empty() and loaded.pending == expected and expected.phase == "confirmed" and DirAccess.remove_absolute(ProjectSettings.globalize_path(file)) == OK)
 static func acquire_send(project: String, user: String) -> bool:
-	return DirAccess.make_dir_absolute(ProjectSettings.globalize_path(path(project, user) + ".sending")) == OK
+	return Lease.acquire(path(project, user) + ".sending")
 static func release_send(project: String, user: String) -> void:
-	DirAccess.remove_absolute(ProjectSettings.globalize_path(path(project, user) + ".sending"))
+	Lease.release(path(project, user) + ".sending")

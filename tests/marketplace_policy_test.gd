@@ -21,6 +21,11 @@ func body() -> Dictionary:
 func record() -> Dictionary:
 	return {"operationId": OPERATION, "issuedAt": TIME, "kind": "create", "listingId": LISTING, "listingRevision": 1, "recordedAt": TIME, "itemReference": {"instanceId": INSTANCE, "itemKey": "hat"}, "currencyKey": "1coin.gold", "price": 101, "feeAmount": 3, "sellerNet": 98}
 func _initialize() -> void:
+	if "crash-child" in OS.get_cmdline_user_args():
+		if not Pending.acquire_send(PROJECT, USER): quit(2); return
+		var marker: FileAccess = FileAccess.open("user://marketplace-crash-ready", FileAccess.WRITE)
+		marker.store_string("ready"); marker.flush(); marker.close()
+		while true: OS.delay_msec(50)
 	if "lease-child" in OS.get_cmdline_user_args():
 		var acquired: bool = Pending.acquire_send(PROJECT, USER)
 		if acquired: Pending.release_send(PROJECT, USER)
@@ -63,6 +68,17 @@ func _initialize() -> void:
 	var output: Array = []
 	check(OS.execute(OS.get_executable_path(), ["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", "res://tests/marketplace_policy_test.gd", "--", "lease-child"], output, true) == 0)
 	Pending.release_send(PROJECT, USER)
+	var child: int = OS.create_process(OS.get_executable_path(), ["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", "res://tests/marketplace_policy_test.gd", "--", "crash-child"])
+	var deadline: int = Time.get_ticks_msec() + 5000
+	while not FileAccess.file_exists("user://marketplace-crash-ready") and Time.get_ticks_msec() < deadline: OS.delay_msec(20)
+	check(child > 0 and FileAccess.file_exists("user://marketplace-crash-ready"))
+	check(not Pending.acquire_send(PROJECT, USER))
+	check(OS.kill(child) == OK)
+	OS.delay_msec(80)
+	check(Pending.acquire_send(PROJECT, USER))
+	check(Pending.load_pending(PROJECT, USER).pending == pending)
+	Pending.release_send(PROJECT, USER)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://marketplace-crash-ready"))
 	var confirmed: Dictionary = pending.duplicate(true); confirmed.phase = "confirmed"; confirmed.confirmed = {"kind": "create", "operationId": OPERATION, "listingId": LISTING}
 	check(Pending.store(PROJECT, USER, confirmed, pending))
 	check(not Pending.confirm(PROJECT, USER, pending))
