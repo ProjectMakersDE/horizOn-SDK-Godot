@@ -36,12 +36,26 @@ class Contract(BaseHTTPRequestHandler):
             step = type(self).count + 1
             type(self).count = step
         try:
-            assert step <= 16, "unexpected extra request after scope change"
+            assert step <= 18, "unexpected extra request after scope change"
             assert self.headers.get("X-API-Key") == "project-statistics", "project key"
             token = "fresh-session" if step >= 13 else "statistics-session"
             assert self.headers.get("Authorization") == "Bearer " + token, "bearer session"
             url = urlparse(self.path)
             query = parse_qs(url.query)
+            if step in (17, 18):
+                assert method == "POST" and url.path == "/api/v1/app/statistics"
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
+                assert body["userId"] == "statistics-user"
+                assert body["updates"] == [{"key": f"stat{i}", "value": i} for i in range(201)]
+                if step == 17: type(self).operation = body["operationId"]
+                assert body["operationId"] == type(self).operation, "large replay keeps original ID"
+                result = snapshot(4, 0, version=3 if step == 17 else 4, at=MONDAY+3,
+                                  operation=body["operationId"], replay=step == 18)
+                if step == 17:
+                    result["definitions"] = [{"key": f"stat{i}", "name": "Stat", "mode": "sum", "reset": "none"} for i in range(201)]
+                    result["values"] = [{"key": f"stat{i}", "value": i, "hasValue": True, "period": None} for i in range(201)]
+                send_json(self, 200, result)
+                return
             if step in (3,4,5,14,15,16):
                 assert method == "POST" and url.path == "/api/v1/app/statistics", "POST path"
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
@@ -92,12 +106,12 @@ def main():
     if ready:
         with open(ready,"w") as handle: handle.write("ready\n")
     server.timeout=10
-    for _ in range(16): server.handle_request()
+    for _ in range(18): server.handle_request()
     server.timeout=1
     server.handle_request()
     server.server_close()
-    if Contract.count != 16 or Contract.failure:
-        print(Contract.failure or f"expected 16 requests, saw {Contract.count}",file=sys.stderr)
+    if Contract.count != 18 or Contract.failure:
+        print(Contract.failure or f"expected 18 requests, saw {Contract.count}",file=sys.stderr)
         return 1
     print("Godot statistics server observed exact integer, scope and stable retry contract")
     return 0
