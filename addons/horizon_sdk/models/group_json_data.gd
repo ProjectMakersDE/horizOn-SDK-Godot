@@ -64,7 +64,7 @@ static func _canonical(tokens: Array[Token], position: Array[int], depth: int) -
 			position[0] += 1; continue
 		if frame.state in ["key", "key_or_end"]:
 			if not text.begins_with('"'): return null
-			var key: Variant = JSON.parse_string(text)
+			var key: Variant = _canonicalString(text)
 			if not key is String or frame.entries.has(key): return null
 			frame.key = key; frame.state = "colon"; position[0] += 1; continue
 		if frame.state == "colon":
@@ -88,7 +88,7 @@ static func _canonical(tokens: Array[Token], position: Array[int], depth: int) -
 			var keys: Array = node.entries.keys(); keys.sort()
 			for index: int in range(keys.size() - 1, -1, -1):
 				nodes.append(node.entries[keys[index]])
-				nodes.append(("," if index > 0 else "") + JSON.stringify(keys[index]) + ":")
+				nodes.append(("," if index > 0 else "") + keys[index] + ":")
 		else:
 			output.append("["); nodes.append("]")
 			for index: int in range(node.values.size() - 1, -1, -1):
@@ -104,10 +104,16 @@ static func _put(frame: Dictionary, node: Variant) -> void:
 	frame.state = "separator"
 static func _leaf(text: String) -> Variant:
 	if text.begins_with('"'):
-		var value: Variant = JSON.parse_string(text)
-		return JSON.stringify(value) if value is String else null
+		return _canonicalString(text)
 	if text in ["null", "true", "false"]: return text
 	return text if RegEx.create_from_string("^-?(0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\\z").search(text) != null else null
+
+static func _canonicalString(token: String) -> Variant:
+	# Canonical keys are JSON string tokens, not Godot dictionary keys. NUL and
+	# U+FFFD must stay distinct in duplicate-source checks and duplicate-key guards.
+	var value: Variant = metadataString(token)
+	if value is HorizonItemStringData: return value.getJson()
+	return quoteMetadata(value) if value is String else null
 
 static func fromDictionary(data: Dictionary) -> HorizonGroupJsonData:
 	if not isJsonValue(data, 0): return null

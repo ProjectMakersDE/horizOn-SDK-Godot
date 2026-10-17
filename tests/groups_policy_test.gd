@@ -75,6 +75,13 @@ func _run() -> void:
 	assert(not fragments.has("_invalid") and HorizonGroupJsonData.fromJson(fragments[GROUP]).getPreview() == {"a":1.0,"b":"é"}, "Indent/order/string-escape differences must not reject a committed mutation")
 	assert(HorizonGroupJsonData.extract(repeated.replace('"a": 1', '"a": 2')).has("_invalid"), "Conflicting duplicate group data fails closed")
 
+	var nul_data: String = '{"group":{"id":"' + GROUP + '","data":{"x":"a\\u0000z"}},"groups":[{"id":"' + GROUP + '","data":{"x":"a\\ufffdz"}}]}'
+	assert(HorizonGroupJsonData.extract(nul_data).has("_invalid"), "NUL and U+FFFD data values cannot prove the same source")
+	assert(not HorizonGroupJsonData.extract(nul_data.replace('a\\ufffdz','\\u0061\\u0000z')).has("_invalid"), "Equivalent NUL string spellings share one source")
+	var nul_keys: String = '{"\\u0000":1,"\\ufffd":2}'
+	assert(HorizonGroupJsonData.fromJson(nul_keys) != null and HorizonGroupJsonData.fromJson(nul_keys).getJson() == nul_keys, "Distinct lossless keys remain distinct")
+	assert(HorizonGroupJsonData.fromJson('{"\\u0000":1,"\\u0000":2}') == null, "Duplicate NUL keys still fail closed")
+
 	assert(HorizonGroupJsonData.fromJson('{"a":1,"\\u0061":2}') == null and HorizonGroupJsonData.fromJson('[]') == null)
 	assert(HorizonGroupJsonData.fromJson('{"a":1e999}') == null)
 	var exact: Dictionary = _group(1)
