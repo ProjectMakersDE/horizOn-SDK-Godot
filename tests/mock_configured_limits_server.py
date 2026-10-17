@@ -41,7 +41,7 @@ MATCH_CAP={'activeMatches':11,'stateBytes':14648*1024,'retainedMatches':0,'pendi
 def summary(id,kind):
  invite=kind=='invite';terminal=kind=='recent';creator=uid(170000)if invite else U
  return {'id':id,'name':'Current','revision':1,'creatorId':creator,'capacity':2,'visibility':'private','strength':0,'status':'cancelled'if terminal else'lobby','participantIds':[creator],'invitedIds':[U]if invite else[],'forfeitedIds':[],'currentPlayerId':None,'turnDeadline':None,'createdAt':T,'startedAt':None,'finishedAt':T if terminal else None,'purgeAt':'2027-01-01T00:00:00Z'if terminal else None,'finalStateRevision':None,'hasDisagreement':False,'ranked':False,'timeoutDue':False}
-def mine():return {'userId':U,'revision':1,'active':[summary(uid(180000+i),'active')for i in range(11)],'invites':[summary(uid(190000+i),'invite')for i in range(21)],'recent':[summary(uid(200000+i),'recent')for i in range(101)],'pendingResults':[{'matchId':uid(210000+i),'finalStateRevision':5,'ownRankedRunId':RUN if i==0 else uid(500000+i),'expiresAt':'2026-10-18T12:00:00Z'}for i in range(201)],'limits':MATCH_CAP,'pollAfterSeconds':120,'serverTime':T}
+def mine():return {'userId':U,'revision':1,'active':[summary(uid(180000+i),'active')for i in range(11)],'invites':[summary(uid(190000+i),'invite')for i in range(21)],'recent':[summary(uid(200000+i),'recent')for i in range(513)],'pendingResults':[{'matchId':uid(210000+i),'finalStateRevision':5,'ownRankedRunId':RUN if i==0 else uid(500000+i),'expiresAt':'2026-10-18T12:00:00Z'}for i in range(201)],'limits':MATCH_CAP,'pollAfterSeconds':120,'serverTime':T}
 MAX_STATE=bytes([0,255])*(14648*512)
 def point():return {'match':dict(summary(uid(180000),'active'),turnOrder=[],turnSeconds=60,timeoutPolicy='skip',dataBase64=base64.b64encode(MAX_STATE).decode(),reports=[],reportDeadline=None,absoluteDeadline=None,rankedLeaderboardKey=None,ownRankedRunId=None,notificationPending=False),'pollAfterSeconds':120,'serverTime':T}
 def run():return {'runId':RUN,'ticket':'same-original-run-resealed','seed':42,'leaderboardKey':'ranked','issuedAt':T,'expiresAt':'2026-10-17T12:30:00Z','expiresInSeconds':1800}
@@ -65,6 +65,8 @@ add('GET','/api/v1/app/shared-objects/world/usage',usage())
 add('GET','/api/v1/app/shared-objects/world/objects/'+uid(160000),object_view())
 add('GET','/api/v1/app/matches/limits',{'limits':MATCH_CAP,'config':{'revision':1,'rankedLeaderboardKey':'ranked'},'capabilities':{'matches':True,'matchesRanked':True,'realtime':True},'pollAfterSeconds':120,'serverTime':T})
 add('GET','/api/v1/app/matches',mine())
+add('GET','/api/v1/app/matches',dict(mine(),revision=0,active=[],invites=[],recent=[],pendingResults=[],serverTime='2026-10-17T12:00:01Z'))
+add('GET','/api/v1/app/matches',dict(mine(),revision=2,active=[],invites=[],recent=[],pendingResults=[],serverTime='2026-10-17T11:59:59Z'))
 add('GET','/api/v1/app/matches/'+uid(180000),point())
 add('GET','/api/v1/app/matches',mine())
 add('POST','/api/v1/app/matches',{'code':'UNAVAILABLE'},body='maximum-create',status=503)
