@@ -1,6 +1,6 @@
 class_name HorizonAchievements
 extends RefCounted
-## Server-owned permanent unlocks and pending Inbox rewards. No polling or local value grants.
+## Permanent unlocks with atomic server rewards. Legacy pending Inbox rewards remain readable.
 
 signal achievements_loaded(snapshot: Dictionary)
 signal achievements_updated(snapshot: Dictionary)
@@ -12,6 +12,7 @@ const ENDPOINT := "/api/v1/app/achievements"
 var _http: HorizonHttpClient
 var _auth: HorizonAuth
 var _inbox: HorizonInbox
+var _values: HorizonPlayerValues
 var _scope: Dictionary = {}
 var _current: Dictionary = {}
 var _epoch: int = 0
@@ -23,15 +24,17 @@ var _lastErrorCode: String = ""
 var _key: RegEx = RegEx.create_from_string("^[a-z0-9][a-z0-9._-]{0,23}\\z")
 var _version: RegEx = RegEx.create_from_string("^[0-9a-f]{64}\\z")
 
-func initialize(http: HorizonHttpClient, auth: HorizonAuth, inbox: HorizonInbox = null, statistics: HorizonStatistics = null) -> void:
+func initialize(http: HorizonHttpClient, auth: HorizonAuth, inbox: HorizonInbox = null, statistics: HorizonStatistics = null, values: HorizonPlayerValues = null) -> void:
 	_http = http
 	_auth = auth
 	_inbox = inbox
+	_values = values
 	_auth.signout_completed.connect(_reset)
 	_auth.signin_completed.connect(_playerChanged)
 	_auth.signup_completed.connect(_playerChanged)
 	if statistics != null:
 		statistics.statistics_updated.connect(_statisticsChanged)
+		statistics.statistics_updating.connect(_statisticsStarted)
 
 ## Conditional metadata is sent only when this manager owns its matching player cache.
 func getAchievements(user_id: String, definition_version: String = "") -> Dictionary:
@@ -44,7 +47,7 @@ func unlock(user_id: String, key: String) -> Dictionary:
 	if not _validKey(key): return _fail("INVALID_REQUEST")
 	return await _call(user_id, "/unlock", {"key": key})
 
-## Explicit bounded drain; failures retain the server's immutable original pending intent.
+## Compatibility status for original keys. New complete unlocks need no delivery or claim.
 func deliverRewards(user_id: String, keys: Array) -> Dictionary:
 	if keys.is_empty() or keys.size() > 8: return _fail("INVALID_REQUEST")
 	var unique: Dictionary = {}
@@ -84,6 +87,7 @@ func _call(user_id: String, route: String, payload: Dictionary, version_hint: St
 	if route.is_empty() and not _current.is_empty() and (version_hint.is_empty() or version_hint == _current.definitionVersion):
 		sent_version = _current.definitionVersion
 	if not route.is_empty(): _invalidate()
+	if route == "/unlock" and _values != null: _values.clearCache()
 	var epoch: int = _epoch
 	var endpoint: String = ENDPOINT + "?userId=" + user_id.uri_encode()
 	if not sent_version.is_empty(): endpoint += "&definitionVersion=" + sent_version
@@ -135,7 +139,9 @@ func _consume(raw: Variant, user_id: String, route: String, body: Dictionary, se
 	var data: Dictionary = snapshot
 	if not route.is_empty():
 		var requested: Array = [body.key] if route == "/unlock" else body.keys
-		var outcomes: Variant = _outcomes(raw.get("deliveryResults") if route == "/unlock" else raw.get("results"), requested)
+		var outcome_rows: Variant = raw.get("deliveryResults") if route == "/unlock" else raw.get("results")
+		var compact_result: bool = route == "/unlock" and outcome_rows is Array and outcome_rows.is_empty()
+		var outcomes: Variant = _outcomes(outcome_rows, [] if compact_result else requested)
 		if outcomes == null: return _fail("INVALID_RESPONSE")
 		if route == "/unlock":
 			if typeof(raw.get("replayed")) != TYPE_BOOL or not raw.get("newlyUnlocked") is Array:
@@ -143,7 +149,9 @@ func _consume(raw: Variant, user_id: String, route: String, body: Dictionary, se
 			if raw.newlyUnlocked != ([] if raw.replayed else [body.key]): return _fail("INVALID_RESPONSE")
 			var unlocked: bool = false
 			for progress: Dictionary in snapshot.progress:
-				if progress.key == body.key: unlocked = true
+				if progress.key == body.key:
+					if compact_result and not raw.replayed and progress.rewardState != "complete": return _fail("INVALID_RESPONSE")
+					unlocked = true
 			if not unlocked: return _fail("INVALID_RESPONSE")
 			data = {"achievements": snapshot, "newlyUnlocked": raw.newlyUnlocked.duplicate(), "replayed": raw.replayed, "deliveryResults": outcomes}
 		else:
@@ -160,15 +168,18 @@ func _normalize(raw: Variant, user_id: String, sent_version: String) -> Dictiona
 	if raw.revision < _revision or HorizonPlayerValues._timeMillis(raw.serverTime) < _serverTime:
 		_lastErrorCode = "STALE_RESPONSE"
 		return {}
-	if not raw.get("progress") is Array or raw.progress.size() > 500 or not raw.get("limits") is Dictionary:
+	if not raw.get("progress") is Array or not raw.get("limits") is Dictionary:
 		return {}
 	for field: String in ["maxDefinitions", "maxLifetimeKeys"]:
 		if not _nonnegative(raw.limits.get(field)): return {}
-	if raw.limits.maxDefinitions > 250 or raw.limits.maxLifetimeKeys < 1 or raw.limits.maxLifetimeKeys > 500: return {}
+	if raw.limits.maxDefinitions < 1 or raw.limits.maxDefinitions > 2147483647 or raw.limits.maxLifetimeKeys < 1 or raw.limits.maxLifetimeKeys > 2147483647: return {}
 	var progress: Array = []
 	var unlocked: Dictionary = {}
 	for item: Variant in raw.progress:
-		if not item is Dictionary or not _validKey(item.get("key")) or unlocked.has(item.key) or not _time(item.get("unlockedAt")) or not item.get("rewardState") in ["none", "pending", "delivered"]: return {}
+		if not item is Dictionary or not _validKey(item.get("key")) or unlocked.has(item.key) or not item.get("rewardState") in ["complete", "none", "pending", "delivered"]: return {}
+		if item.rewardState == "complete":
+			if not item.has("unlockedAt") or item.unlockedAt != null: return {}
+		elif not _time(item.get("unlockedAt")): return {}
 		unlocked[item.key] = true
 		var entry_id: Variant = item.get("inboxEntryId")
 		var pending: Variant = item.get("pendingReward")
@@ -182,12 +193,12 @@ func _normalize(raw: Variant, user_id: String, sent_version: String) -> Dictiona
 			pending = {"issuedAt": pending.issuedAt, "values": amounts}
 		elif pending != null:
 			return {}
-		progress.append({"key": item.key, "unlockedAt": item.unlockedAt, "rewardState": item.rewardState, "inboxEntryId": entry_id, "pendingReward": pending})
+		progress.append({"key": item.key, "unlockedAt": item.get("unlockedAt"), "rewardState": item.rewardState, "inboxEntryId": entry_id, "pendingReward": pending})
 	var definitions: Variant = raw.get("definitions")
 	if definitions == null:
 		if sent_version.is_empty() or _current.is_empty() or raw.definitionVersion != sent_version or _current.definitionVersion != sent_version or raw.revision != _current.revision: return {}
 		definitions = _current.definitions.duplicate(true)
-	if not definitions is Array or definitions.size() > 250: return {}
+	if not definitions is Array: return {}
 	var normalized: Array = []
 	var keys: Dictionary = {}
 	for definition: Variant in definitions:
@@ -227,7 +238,7 @@ func _outcomes(raw: Variant, requested: Array) -> Variant:
 	var seen: Dictionary = {}
 	var outcomes: Array = []
 	for item: Variant in raw:
-		if not item is Dictionary or not item.get("key") in requested or seen.has(item.key) or not item.get("state") in ["none", "pending", "delivered"]: return null
+		if not item is Dictionary or not item.get("key") in requested or seen.has(item.key) or not item.get("state") in ["complete", "none", "pending", "delivered"]: return null
 		seen[item.key] = true
 		var entry: Variant = item.get("inboxEntryId")
 		var code: Variant = item.get("code")
@@ -259,6 +270,10 @@ func _reset() -> void:
 func _statisticsChanged(snapshot: Dictionary) -> void:
 	if snapshot.get("newlyUnlocked") is Array and not snapshot.newlyUnlocked.is_empty() and not snapshot.get("replayed", false):
 		clearCache()
+
+func _statisticsStarted() -> void:
+	clearCache()
+	if _values != null: _values.clearCache()
 
 func _validKey(value: Variant) -> bool: return value is String and _key.search(value) != null
 func _nonnegative(value: Variant) -> bool: return HorizonPlayerValues._safeNumber(value) and value >= 0

@@ -1,7 +1,7 @@
 extends Node
 ## Explicit UI actions after connecting/restoring the original player session.
 ## Configure first_steps (statistic kills) and manual_hidden (manual, optional coins reward).
-## The server owns permanent keys and pending rewards. Nothing here grants balances locally.
+## The server atomically credits rewards on unlock. Nothing here grants balances locally.
 const InboxSample = preload("res://addons/horizon_sdk/examples/features/inbox_example.gd")
 var _claims: Node
 
@@ -30,19 +30,21 @@ func unlock_selected(key: String) -> Dictionary:
 	return result
 
 func deliver_selected_pending(keys: Array) -> Dictionary:
+	# Compatibility status for legacy rewards. New complete unlocks need no delivery or claim.
 	var horizon: Node = _authorized()
 	if horizon == null: return _failure("SESSION_REQUIRED")
 	var result: Dictionary = await horizon.achievements.deliverRewards(horizon.auth.getCurrentUser().userId, keys)
 	if result.success:
 		for outcome: Dictionary in result.data.results:
 			print("Reward %s: %s (%s)" % [outcome.key, outcome.state, outcome.code])
-	# INBOX_FULL remains pending: claim/remove eligible entries, then explicitly retry same keys.
+	# MIGRATION_REQUIRED means the server must safely reconcile an old reward source.
 	return result
 
 func refresh_reward_inbox() -> Dictionary:
 	return await _claim_example().refresh_inbox()
 
 func claim_delivered_reward(entry_id: String) -> Dictionary:
+	# Legacy Inbox rewards only. New achievement rewards were already credited on unlock.
 	# First render a fresh authorized Inbox snapshot. The shared example persists the exact
 	# claim ID before HTTP and replaces Player Values only with the authoritative full state.
 	return await _claim_example().claim_selected_entry(entry_id)

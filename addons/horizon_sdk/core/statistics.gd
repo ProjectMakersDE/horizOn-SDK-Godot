@@ -4,6 +4,8 @@ extends RefCounted
 
 signal statistics_loaded(snapshot: Dictionary)
 signal statistics_updated(snapshot: Dictionary)
+## Emitted before HTTP because a committed reward can outlive a lost response.
+signal statistics_updating()
 signal definitions_loaded(catalog: Dictionary)
 signal statistics_failed(error: String, code: String)
 
@@ -86,6 +88,8 @@ func updateStatistics(updates: Array, operation_id: String) -> Dictionary:
 	var epoch: int = _cacheEpoch
 	var body: Dictionary = {"userId": scope["user"], "operationId": operation_id, "updates": updates.duplicate(true)}
 	_lastOperationId = operation_id
+	statistics_updating.emit()
+	if not _sameScope(scope, epoch): return _fail("Request context changed before updating statistics", _lastErrorCode)
 	var response: HorizonNetworkResponse = await _http.postAsync(ENDPOINT, body, true)
 	if not _sameScope(scope, epoch): return _fail("Request context changed while updating statistics", _lastErrorCode)
 	if not response.isSuccess: return _networkFailure(response)

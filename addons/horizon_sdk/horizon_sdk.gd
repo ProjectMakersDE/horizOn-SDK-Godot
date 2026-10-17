@@ -176,7 +176,7 @@ func _initializeManagers() -> void:
 	statistics = HorizonStatistics.new()
 	statistics.initialize(_http, _logger, auth)
 	achievements = HorizonAchievements.new()
-	achievements.initialize(_http, auth, inbox, statistics)
+	achievements.initialize(_http, auth, inbox, statistics, playerValues)
 	sharedObjects = HorizonSharedObjects.new()
 	sharedObjects.initialize(_http, auth)
 	matches = HorizonMatches.new()

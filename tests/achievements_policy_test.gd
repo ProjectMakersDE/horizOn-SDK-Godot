@@ -3,6 +3,9 @@ const USER := "00000000-0000-4000-8000-000000001008"
 class InboxProbe extends HorizonInbox:
 	var invalidations: int = 0
 	func clearCache() -> void: invalidations += 1
+class ValuesProbe extends HorizonPlayerValues:
+	var invalidations: int = 0
+	func clearCache() -> void: invalidations += 1
 class ControlledHttp extends HorizonHttpClient:
 	var responses: Array = []
 	var calls: Array = []
@@ -46,7 +49,10 @@ func _run() -> void:
 	auth._currentUser.accessToken = http.sessionToken
 	var achievements := HorizonAchievements.new()
 	var inbox := InboxProbe.new()
-	achievements.initialize(http, auth, inbox)
+	var values := ValuesProbe.new()
+	var statistics := HorizonStatistics.new()
+	statistics.initialize(http, logger, auth)
+	achievements.initialize(http, auth, inbox, statistics, values)
 	assert(not HorizonPlayerValues._safeJsonIntegers('{"definitionVersion":"opaque"}'), "Existing PV/Gift numeric-version validation keeps its default")
 	http.responses = [{"data": _snapshot(1, "a", 1)}]
 	assert((await achievements.getAchievements(USER)).success)
@@ -187,6 +193,44 @@ func _run() -> void:
 	assert((await achievements.deliverRewards(USER, ["a", "b", "c", "d", "e", "f", "g", "h", "i"])).errorCode == "INVALID_REQUEST")
 	assert((await achievements.unlock("other-player", "manual")).errorCode == "SESSION_FORBIDDEN")
 	assert(http.calls.size() == count)
+	var compact: Dictionary = _snapshot(100, "a", 59)
+	compact.progress = [{"key": "manual", "unlockedAt": null, "rewardState": "complete", "inboxEntryId": null, "pendingReward": null}]
+	var invalidations: int = values.invalidations
+	for replay: bool in [false, true]:
+		http.responses = [{"data": {"achievements": compact, "newlyUnlocked": [] if replay else ["manual"], "replayed": replay, "deliveryResults": []}}]
+		var completed: Dictionary = await achievements.unlock(USER, "manual")
+		assert(completed.success and completed.data.deliveryResults.is_empty() and completed.data.achievements.progress[0].unlockedAt == null)
+	assert(values.invalidations == invalidations + 2 and inbox.invalidations == 2, "Atomic rewards invalidate values but never create Inbox work")
+	var large: Dictionary = _snapshot(101, "b", 59)
+	var template: Dictionary = large.definitions[0].duplicate(true)
+	large.definitions = []
+	large.progress = []
+	for index: int in range(701):
+		var definition: Dictionary = template.duplicate(true)
+		definition.key = "key_%d" % index
+		large.definitions.append(definition)
+		var unlocked: Dictionary = compact.progress[0].duplicate(true)
+		unlocked.key = definition.key
+		large.progress.append(unlocked)
+	large.limits = {"maxDefinitions": 800, "maxLifetimeKeys": 1000}
+	http.responses = [{"data": large}]
+	assert((await achievements.getAchievements(USER)).data.progress.size() == 701, "Raised Admin limits are not clamped to defaults")
+	large.revision = 102
+	large.definitionVersion = "c".repeat(64)
+	large.limits = {"maxDefinitions": 20, "maxLifetimeKeys": 50}
+	http.responses = [{"data": large}]
+	assert((await achievements.getAchievements(USER)).data.progress.size() == 701, "A smaller limit does not hide retained unlocks")
+	large.progress[0].unlockedAt = "2026-10-16T12:00:00Z"
+	http.responses = [{"data": large}]
+	assert((await achievements.getAchievements(USER)).errorCode == "INVALID_RESPONSE", "Compact progress cannot acquire a fabricated date")
+	invalidations = values.invalidations
+	http.on_start = func():
+		assert(values.invalidations == invalidations + 1 and achievements.getCurrentAchievements().is_empty(), "Invalidate before a report can commit")
+	http.responses = [{"data": {}}]
+	assert((await statistics.updateStatistics([{"key": "kills", "value": 1}], "1792180800000:00000000-0000-4000-8000-000000001008")).is_empty())
+	http.on_start = Callable()
+	assert(achievements.getCurrentAchievements().is_empty())
+	print("Godot compact Achievements: immediate completion, 701 retained unlocks, Admin limits, lost-response cache invalidation passed")
 	print("Godot Achievements policy: atomic cache admission, hidden metadata, strict wire integers, version ownership, freshness, serialization and context/signal ABA passed")
 	http.queue_free()
 	quit(0)
