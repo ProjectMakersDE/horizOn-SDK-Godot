@@ -32,6 +32,12 @@ static func cursor(value: Variant) -> bool:
 	return value is String and _cursor.search(value) != null
 static func milliseconds(value: Variant) -> int:
 	if not value is String or _instant.search(value) == null: return -1
+	var year: int = int(value.substr(0, 4))
+	var month: int = int(value.substr(5, 2))
+	var day: int = int(value.substr(8, 2))
+	if year < 1970 or month < 1 or month > 12 or int(value.substr(11, 2)) > 23 or int(value.substr(14, 2)) > 59 or int(value.substr(17, 2)) > 59: return -1
+	var days: Array[int] = [31, 29 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+	if day < 1 or day > days[month - 1]: return -1
 	var seconds: int = Time.get_unix_time_from_datetime_string(value)
 	var millis: int = seconds * 1000 + int(value.substr(20, 3))
 	return millis if millis >= 0 and millis <= MAX and timestamp(millis) == value else -1
