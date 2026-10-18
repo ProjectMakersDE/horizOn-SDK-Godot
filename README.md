@@ -890,16 +890,11 @@ that cache; `[]` replaces it. Hidden metadata becomes visible only after unlock.
 Session/project/host generations and explicit invalidation fence old responses.
 Reads and mutations serialize; lower progress/time cannot replace newer state.
 
-Retain the same manual key on timeout; the permanent server guard survives catalogue
-edits and archival. Drain 1–8 unique pending keys explicitly. `INBOX_FULL` keeps the
-original `pendingReward.issuedAt/values`; current catalogue rewards never replace
-that accepted intent. A delivered result invalidates the local Inbox cache without
-fetching it. Explicitly refresh Inbox and claim its original entry to replace the
-complete Player Values state; never add reward amounts locally.
+Fresh achievements atomically grant rewards with the durable unlock. Compact progress uses `rewardState:"complete"` and `unlockedAt:null`; it creates no new pending reward or Inbox entry. `deliverRewards` is a compatibility/status call for one to eight original keys, not a second grant. Retained legacy `pendingReward`/`inboxEntryId` fields describe old accepted rewards only; unresolved originals require explicit source migration (`MIGRATION_REQUIRED`), never reconstruction from current definitions or automatic regrant. Repeat an uncertain manual unlock with the same key, and read current Player Values instead of adding reward deltas locally.
 
 Statistics `newlyUnlocked` invalidates cached achievement metadata without adding
 an HTTP request. The minimal `achievements_example.gd` shows an explicit follow-up
-refresh, manual unlock, pending drain and the shared durable Inbox claim flow.
+refresh, manual unlock and legacy reward-status/claim helpers. Fresh compact unlocks need no Inbox claim.
 There are no background polls, automatic signup, client reward evaluation or new
 server reads beyond the three explicitly requested API operations. Native HTTP
 tests use dedicated Godot port 20108; inherited engine fixtures remain serialized.
@@ -920,7 +915,7 @@ func confirm_incoming(user_id: String, target: String, revision: int, request_id
     return await Horizon.friends.acceptRequest(user_id, target, revision, request_id)
 ```
 
-Every operation returns `{success, data, errorCode, error}`. The reserved methods are
+Every operation returns `{success, data, errorCode, error}`. The implemented methods are
 `getFriends(user_id)`, `findPlayer(user_id, query)`, `sendRequest`, `removeFriend`,
 `blockPlayer`, `unblockPlayer` with `(user_id, target_user_id, expected_revision)`, and
 `acceptRequest`, `declineRequest`, `cancelRequest` with the same arguments plus the original
@@ -1026,8 +1021,9 @@ uncertain result. Mutations return `{groups:MyGroupsView,group:GroupView|null}`;
 Private data is exposed only with the current session's member role; pending
 metadata always strips it. Invalid or partial responses never replace the cache or
 advance freshness floors. Project/host/session ABA, queued work, signout and
-synchronous callbacks fence old responses. Detail freshness memory is bounded48
-records; own-player revision/server-time floors survive explicit cache clears.
+synchronous callbacks fence old responses. Detail revision/server-time floors survive cache
+clears and remain for every observed group in the current authentication context; there is no
+48-group admission ceiling. An authentication-context change resets these floors.
 
 All eleven `limits` fields are positive Int32 System Config values:
 `maxMembers`, `maxGroupsPerPlayer`, `maxInvitations`, `maxJoinRequests`, `maxDataBytes`,
