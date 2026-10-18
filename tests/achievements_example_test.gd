@@ -75,6 +75,14 @@ func _run() -> void:
 	assert(horizon.playerValues.getCurrentState().values[0].balance == 13 and Pending.load_pending(http.apiKey, USER).pending.is_empty(), "Original claim replay replaces the full balance once")
 	assert(http.calls[-1].body == http.calls[-2].body and http.calls.size() == 5)
 	assert((await sample.claim_delivered_reward(ENTRY)).errorCode == "ENTRY_NOT_CLAIMABLE" and http.calls.size() == 5)
+	var complete: Dictionary = _achievements(true)
+	complete.progress = [{"key": "manual_hidden", "unlockedAt": null, "rewardState": "complete", "inboxEntryId": null, "pendingReward": null}]
+	for replay: bool in [false, true]:
+		var unlocked: Array = [] if replay else ["manual_hidden"]
+		http.responses = [{"data": {"achievements": complete, "newlyUnlocked": unlocked, "replayed": replay, "deliveryResults": []}}]
+		var result: Dictionary = await sample.unlock_selected("manual_hidden")
+		assert(result.success and result.data.replayed == replay and result.data.newlyUnlocked == unlocked, "The actual sample must return both a new unlock and an empty replay array without formatting errors")
+	assert(http.responses.is_empty() and http.calls[-1].body == http.calls[-2].body, "Replay keeps the original achievement key")
 	sample.free()
 	horizon.free()
 	http.queue_free()
