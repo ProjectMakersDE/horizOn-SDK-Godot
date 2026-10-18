@@ -634,8 +634,9 @@ uncertain result. Mutations return `{groups:MyGroupsView,group:GroupView|null}`;
 Private data is exposed only with the current session's member role; pending
 metadata always strips it. Invalid or partial responses never replace the cache or
 advance freshness floors. Project/host/session ABA, queued work, signout and
-synchronous callbacks fence old responses. Detail freshness memory is bounded48
-records; own-player revision/server-time floors survive explicit cache clears.
+synchronous callbacks fence old responses. Detail revision/server-time floors survive cache
+clears and remain for every observed group in the current authentication context; there is no
+48-group admission ceiling. An authentication-context change resets these floors.
 
 All eleven `limits` fields are positive Int32 System Config values:
 `maxMembers`, `maxGroupsPerPlayer`, `maxInvitations`, `maxJoinRequests`, `maxDataBytes`,
