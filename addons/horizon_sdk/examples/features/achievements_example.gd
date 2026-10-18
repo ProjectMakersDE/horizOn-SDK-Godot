@@ -26,7 +26,7 @@ func unlock_selected(key: String) -> Dictionary:
 	# Retain this same original key after an uncertain response; never invent another identity.
 	var result: Dictionary = await horizon.achievements.unlock(horizon.auth.getCurrentUser().userId, key)
 	if result.success:
-		print("New unlocks (empty on replay): %s" % result.data.newlyUnlocked)
+		print("New unlocks (empty on replay): %s" % [result.data.newlyUnlocked])
 	return result
 
 func deliver_selected_pending(keys: Array) -> Dictionary:
