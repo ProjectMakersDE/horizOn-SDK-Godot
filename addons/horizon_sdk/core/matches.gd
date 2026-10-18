@@ -223,9 +223,6 @@ func _record(kind: String, _id: String, data: Dictionary, resource: String, run_
 		if data.has("match") and data.match.ownRankedRunId != null and data.match.finalStateRevision != null: _runIds[data.match.id + ":" + str(data.match.finalStateRevision)] = data.match.ownRankedRunId
 		for source: Dictionary in data.get("pendingResults", []):
 			if source.ownRankedRunId != null: _runIds[source.matchId + ":" + str(source.finalStateRevision)] = source.ownRankedRunId
-	_trim(_times, 512)
-	_trim(_versions, 512)
-	_trim(_runIds, 128)
 func _delay(resource: String) -> int:
 	if not _refresh.has(resource): return 0
 	var hint: Dictionary = _refresh[resource]

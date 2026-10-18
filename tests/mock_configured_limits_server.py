@@ -23,15 +23,15 @@ DATA={'large':'é'*2048,'seed':9007199254740993,'decimal':'__EXACT_DECIMAL__','n
 node=DATA['nested']
 for _ in range(32):node['x']={};node=node['x']
 NAME='é'*200;DESCRIPTION='d'*2048
-def group(id=G):return {'id':id,'revision':1,'name':NAME,'description':DESCRIPTION,'joinMode':'open','leaderId':U,'memberCount':501,'createdAt':T,'updatedAt':T,'myRole':'leader','data':copy.deepcopy(DATA)}
-LIMITS={'maxMembers':501,'maxGroupsPerPlayer':6,'maxInvitations':21,'maxJoinRequests':21,'maxDataBytes':8192,'memberPageSize':51,'maxPlayerInvitations':21,'maxPlayerRequests':21,'maxNameBytes':512,'maxDescriptionBytes':4096,'maxDataDepth':64}
+def group(id=G):return {'id':id,'revision':3,'name':NAME,'description':DESCRIPTION,'joinMode':'open','leaderId':U,'memberCount':501,'createdAt':T,'updatedAt':T,'myRole':'leader','data':copy.deepcopy(DATA)}
+LIMITS={'maxMembers':501,'maxGroupsPerPlayer':257,'maxInvitations':21,'maxJoinRequests':21,'maxDataBytes':8192,'memberPageSize':51,'maxPlayerInvitations':21,'maxPlayerRequests':21,'maxNameBytes':512,'maxDescriptionBytes':4096,'maxDataDepth':64}
 def groups(low=False):
- result={'userId':U,'revision':2 if low else 1,'groups':[group(uid(50000+i))for i in range(6)],'limits':{k:1 if low else v for k,v in LIMITS.items()},'serverTime':T}
+ result={'userId':U,'revision':2 if low else 1,'groups':[group(uid(50000+i))for i in range(257)],'limits':{k:1 if low else v for k,v in LIMITS.items()},'serverTime':T}
  for key,start in [('incomingInvites',60000),('outgoingRequests',70000)]:result[key]=[optional_stamp({'groupId':uid(start+i),'requestId':uid(start+100+i),'issuerId':uid(90000+i),'group':None},i,'createdAt')for i in range(21)]
  return result
 def pending():
- return {'groupId':G,'revision':1,'invitations':[optional_stamp({'userId':uid(110000+i),'requestId':uid(120000+i),'issuerId':U},i,'createdAt')for i in range(21)],'joinRequests':[optional_stamp({'userId':uid(130000+i),'requestId':uid(140000+i),'issuerId':uid(130000+i)},i,'createdAt')for i in range(21)],'serverTime':T}
-def members():return {'groupId':G,'revision':1,'members':[{'userId':uid(150000+i),'role':'member','joinedAt':T,'display':display()}for i in range(51)],'nextAfterUserId':None,'serverTime':T}
+ return {'groupId':G,'revision':3,'invitations':[optional_stamp({'userId':uid(110000+i),'requestId':uid(120000+i),'issuerId':U},i,'createdAt')for i in range(21)],'joinRequests':[optional_stamp({'userId':uid(130000+i),'requestId':uid(140000+i),'issuerId':uid(130000+i)},i,'createdAt')for i in range(21)],'serverTime':T}
+def members():return {'groupId':G,'revision':3,'members':[{'userId':uid(150000+i),'role':'member','joinedAt':T,'display':display()}for i in range(51)],'nextAfterUserId':None,'serverTime':T}
 SHARED_CAP={'collections':101,'storageBytes':4294967296,'objectBytes':1048576}
 SHARED_BYTES=bytes([0,255])*524288
 def definition():return {'key':'world','name':'World','active':True,'readPolicy':'all','writePolicy':'owner','maxObjectBytes':1048576,'maxObjectsPerOwner':101,'ttlSeconds':None,'searchFields':[{'key':'power','type':'integer'}],'positionEnabled':False,'used':True,'revision':1}
@@ -41,7 +41,7 @@ MATCH_CAP={'activeMatches':11,'stateBytes':14648*1024,'retainedMatches':0,'pendi
 def summary(id,kind):
  invite=kind=='invite';terminal=kind=='recent';creator=uid(170000)if invite else U
  return {'id':id,'name':'Current','revision':1,'creatorId':creator,'capacity':2,'visibility':'private','strength':0,'status':'cancelled'if terminal else'lobby','participantIds':[creator],'invitedIds':[U]if invite else[],'forfeitedIds':[],'currentPlayerId':None,'turnDeadline':None,'createdAt':T,'startedAt':None,'finishedAt':T if terminal else None,'purgeAt':'2027-01-01T00:00:00Z'if terminal else None,'finalStateRevision':None,'hasDisagreement':False,'ranked':False,'timeoutDue':False}
-def mine():return {'userId':U,'revision':1,'active':[summary(uid(180000+i),'active')for i in range(11)],'invites':[summary(uid(190000+i),'invite')for i in range(21)],'recent':[summary(uid(200000+i),'recent')for i in range(101)],'pendingResults':[{'matchId':uid(210000+i),'finalStateRevision':5,'ownRankedRunId':RUN if i==0 else None,'expiresAt':'2026-10-18T12:00:00Z'}for i in range(201)],'limits':MATCH_CAP,'pollAfterSeconds':120,'serverTime':T}
+def mine():return {'userId':U,'revision':1,'active':[summary(uid(180000+i),'active')for i in range(11)],'invites':[summary(uid(190000+i),'invite')for i in range(21)],'recent':[summary(uid(200000+i),'recent')for i in range(513)],'pendingResults':[{'matchId':uid(210000+i),'finalStateRevision':5,'ownRankedRunId':RUN if i==0 else uid(500000+i),'expiresAt':'2026-10-18T12:00:00Z'}for i in range(201)],'limits':MATCH_CAP,'pollAfterSeconds':120,'serverTime':T}
 MAX_STATE=bytes([0,255])*(14648*512)
 def point():return {'match':dict(summary(uid(180000),'active'),turnOrder=[],turnSeconds=60,timeoutPolicy='skip',dataBase64=base64.b64encode(MAX_STATE).decode(),reports=[],reportDeadline=None,absoluteDeadline=None,rankedLeaderboardKey=None,ownRankedRunId=None,notificationPending=False),'pollAfterSeconds':120,'serverTime':T}
 def run():return {'runId':RUN,'ticket':'same-original-run-resealed','seed':42,'leaderboardKey':'ranked','issuedAt':T,'expiresAt':'2026-10-17T12:30:00Z','expiresInSeconds':1800}
@@ -55,14 +55,18 @@ add('GET','/api/v1/app/groups',groups())
 add('GET','/api/v1/app/groups/'+G+'/members',members(),query={'userId':[U],'limit':['51']})
 add('GET','/api/v1/app/groups/'+G+'/pending',pending())
 add('GET','/api/v1/app/groups',groups(True))
+add('GET','/api/v1/app/groups/'+G,dict(group(),revision=2))
 add('PUT','/api/v1/app/groups/'+G,{'code':'INVALID_GROUP'},body='group-original',status=400)
-large_group=group();large_group.update(revision=3,data={'big':'x'*(9*1024*1024),'seed':9007199254740993})
+large_group=group();large_group.update(revision=5,data={'big':'x'*(9*1024*1024),'seed':9007199254740993})
 add('GET','/api/v1/app/groups/'+G,large_group)
+add('GET','/api/v1/app/groups/'+G,dict(group(),revision=2))
 add('GET','/api/v1/app/shared-objects/collections',{'revision':1,'definitions':[definition()],'nextAfterKey':None,'limits':SHARED_CAP,'serverTime':T},query={'userId':[U],'limit':['50']})
 add('GET','/api/v1/app/shared-objects/world/usage',usage())
 add('GET','/api/v1/app/shared-objects/world/objects/'+uid(160000),object_view())
 add('GET','/api/v1/app/matches/limits',{'limits':MATCH_CAP,'config':{'revision':1,'rankedLeaderboardKey':'ranked'},'capabilities':{'matches':True,'matchesRanked':True,'realtime':True},'pollAfterSeconds':120,'serverTime':T})
 add('GET','/api/v1/app/matches',mine())
+add('GET','/api/v1/app/matches',dict(mine(),revision=0,active=[],invites=[],recent=[],pendingResults=[],serverTime='2026-10-17T12:00:01Z'))
+add('GET','/api/v1/app/matches',dict(mine(),revision=2,active=[],invites=[],recent=[],pendingResults=[],serverTime='2026-10-17T11:59:59Z'))
 add('GET','/api/v1/app/matches/'+uid(180000),point())
 add('GET','/api/v1/app/matches',mine())
 add('POST','/api/v1/app/matches',{'code':'UNAVAILABLE'},body='maximum-create',status=503)
@@ -70,6 +74,7 @@ add('GET','/api/v1/app/matches',dict(mine(),revision=2))
 add('GET','/api/v1/app/matches',dict(mine(),revision=2))
 ranked={'userId':U,'finalStateRevision':5}
 add('POST','/api/v1/app/matches/'+uid(210000)+'/ranked-run',{'code':'UNAVAILABLE'},body=ranked,status=503)
+add('POST','/api/v1/app/matches/'+uid(210000)+'/ranked-run',dict(run(),runId=uid(999999)),body=ranked)
 add('POST','/api/v1/app/matches/'+uid(210000)+'/ranked-run',run(),body=ranked)
 add('GET','/api/v1/app/chat/limits',{'limits':CHAT,'moderation':{'muteUntil':None,'banUntil':None},'capabilities':{'chat':True,'realtime':True,'incrementalSync':True,'localHistory':True},'serverTime':'2026-10-17T12:00:00.000Z'})
 class Handler(BaseHTTPRequestHandler):
@@ -87,7 +92,7 @@ class Handler(BaseHTTPRequestHandler):
    raw=self.rfile.read(int(self.headers.get('Content-Length',0)));body=json.loads(raw)if raw else None
    if expected=='group-original':
     assert set(body)=={'userId','expectedRevision','name','description','joinMode','data'}
-    assert body['userId']==U and body['expectedRevision']==1 and body['name']==NAME and body['description']==DESCRIPTION
+    assert body['userId']==U and body['expectedRevision']==3 and body['name']==NAME and body['description']==DESCRIPTION
     assert body['data']['seed']==9007199254740993 and b'1.0000000000000000000001'in raw
    elif expected=='maximum-create':
     assert self.headers.get('If-Match')=='1'

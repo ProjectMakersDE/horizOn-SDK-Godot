@@ -7,6 +7,7 @@ const H := "00000000-0000-4000-8000-000000003011"
 const J := "00000000-0000-4000-8000-000000003012"
 const R := 4294967296
 class FixtureHorizon extends Node:
+	var _http: HorizonHttpClient
 	var auth: HorizonAuth
 	var groups: HorizonGroups
 var _http: HorizonHttpClient
@@ -29,6 +30,7 @@ func _run() -> void:
 	_http.retryDelaySeconds = .02
 	_http.connectionTimeoutSeconds = 1
 	_horizon = FixtureHorizon.new()
+	_horizon._http = _http
 	_horizon.name = "Horizon"
 	_horizon.auth = HorizonAuth.new()
 	_horizon.auth.initialize(_http, logger)

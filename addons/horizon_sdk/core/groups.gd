@@ -58,6 +58,20 @@ func updateGroup(user_id: String, group_id: String, expected_revision: Variant, 
 	if not _metadata(name, description, join_mode, data): return _fail("INVALID_GROUP")
 	return await _call(user_id, "update", group_id, {"expectedRevision": expected_revision, "name": name, "description": description, "joinMode": join_mode, "data": HorizonGroupJsonData.fromDictionary(data) if data is Dictionary else data})
 
+## Complete original JSON string tokens, not display previews. Persist these tokens
+## with the reviewed revision when the response contains NUL metadata.
+func updateGroupOriginalMetadata(user_id: String, group_id: String, expected_revision: Variant, name_json: String, description_json: String, join_mode: String, data: Variant) -> Dictionary:
+	if typeof(expected_revision) != TYPE_INT or not _nonnegative(expected_revision): return _fail("INVALID_REVISION")
+	var name: Variant = _originalMetadata(name_json)
+	var description: Variant = _originalMetadata(description_json)
+	if not _metadata(name, description, join_mode, data): return _fail("INVALID_GROUP")
+	return await _call(user_id, "update", group_id, {"expectedRevision": expected_revision, "name": name, "description": description, "joinMode": join_mode, "data": HorizonGroupJsonData.fromDictionary(data) if data is Dictionary else data})
+
+func _originalMetadata(json: String) -> Variant:
+	var tokens: Array[HorizonGroupJsonData.Token] = HorizonGroupJsonData.tokenize(json)
+	if tokens.size() != 1 or tokens[0].get_string() != json or not json.begins_with('"'): return null
+	return HorizonItemModels._string(json)
+
 func joinGroup(user_id: String, group_id: String, expected_revision: Variant) -> Dictionary:
 	return await _action(user_id, group_id, expected_revision, "join")
 func requestJoin(user_id: String, group_id: String, expected_revision: Variant) -> Dictionary:
@@ -136,8 +150,16 @@ func _call(user_id: String, kind: String, group_id: String = "", payload: Dictio
 		if body.get("data") is HorizonGroupJsonData:
 			var opaque: HorizonGroupJsonData = body.data
 			body.erase("data")
-			original_json = JSON.stringify(body).trim_suffix("}") + ',"data":' + opaque.getJson() + "}"
-			# Telemetry receives a preview; the wire body uses the captured original.
+			var fields: PackedStringArray = []
+			for field: String in body:
+				var value: Variant = body[field]
+				var encoded: String = value.getOriginalJson() if value is HorizonItemStringData else HorizonGroupJsonData.quoteMetadata(value) if value is String else JSON.stringify(value)
+				fields.append(HorizonItemModels.quote(field) + ":" + encoded)
+			fields.append('"data":' + opaque.getJson())
+			original_json = "{" + ",".join(fields) + "}"
+			# Telemetry receives explicit display previews; only original tokens go on the wire.
+			for field: String in ["name", "description"]:
+				if body[field] is HorizonItemStringData: body[field] = body[field].getDisplayPreview()
 			body.data = opaque.getPreview()
 		response = await _http.putOnceAsync(endpoint, body, true, original_json) if kind == "update" else await _http.postJsonOnceAsync(endpoint, body, true, original_json)
 	else:
@@ -165,7 +187,6 @@ func _call(user_id: String, kind: String, group_id: String = "", payload: Dictio
 			result = _fail(_lastErrorCode)
 		else:
 			_floors = _staged.duplicate()
-			while _floors.size() > 48: _floors.erase(_floors.keys()[0])
 			var own: Dictionary = data.groups if mutation else data
 			if mutation or kind == "mine":
 				_current = own.duplicate(true)
@@ -232,12 +253,20 @@ func _mine(raw: Variant, user: String) -> Dictionary:
 
 func _group(raw: Variant, user: String, expected: String = "", private_allowed: bool = true) -> Dictionary:
 	if not raw is Dictionary or not _validUuid(raw.get("id")) or (not expected.is_empty() and raw.id.to_lower() != expected.to_lower()) or not _nonnegative(raw.get("revision")) or not _nonnegative(raw.get("memberCount")) or raw.memberCount < 1 or raw.memberCount > 2147483647 or not _validUuid(raw.get("leaderId")) or not _time(raw.get("createdAt")) or not _time(raw.get("updatedAt")): return {}
-	if not _metadata(raw.get("name"), raw.get("description"), raw.get("joinMode"), {}): return {}
 	var key: String = raw.id.to_lower()
+	var originals: Dictionary = _fragments.get("_metadata", {}).get(key, {})
+	if originals.is_empty(): return {}
+	var name: Variant = HorizonGroupJsonData.metadataString(originals.name)
+	var description: Variant = HorizonGroupJsonData.metadataString(originals.description)
+	if not _metadata(name, description, raw.get("joinMode"), {}): return {}
 	if raw.revision < _staged.get(key, -1): return _stale()
 	_staged[key] = int(raw.revision)
 	var result: Dictionary = {}
 	for field: String in ["id", "name", "description", "joinMode", "leaderId", "createdAt", "updatedAt"]: result[field] = raw[field]
+	result.name = name
+	result.description = description
+	result.nameJson = originals.name
+	result.descriptionJson = originals.description
 	result.revision = int(raw.revision)
 	result.memberCount = int(raw.memberCount)
 	if private_allowed and raw.get("myRole") != null:
@@ -302,7 +331,10 @@ func _display(raw: Variant) -> Dictionary:
 	return {"name": raw.get("name"), "profile": profile}
 
 func _metadata(name: Variant, description: Variant, mode: Variant, data: Variant) -> bool:
-	if not name is String or _nonblank.search(name) == null or not description is String or mode not in ["open", "request", "invite"]: return false
+	if not name is String and not name is HorizonItemStringData: return false
+	if name is String and _nonblank.search(name) == null: return false
+	if not description is String and not description is HorizonItemStringData: return false
+	if mode not in ["open", "request", "invite"]: return false
 	if data is HorizonGroupJsonData: return data.isValid()
 	return data is Dictionary and HorizonGroupJsonData.fromDictionary(data) != null
 
@@ -312,21 +344,26 @@ func _jsonValue(value: Variant, depth: int) -> bool:
 ## Protocol counters require original integer lexemes. Arbitrary group data permits
 ## finite JSON numbers, including keys named revision; do not apply counter rules there.
 func _wire(json: String) -> bool:
-	if not HorizonPlayerValues._safeJsonIntegers(json, []): return false
-	var tokens: RegEx = RegEx.create_from_string('"(?:[^"\\\\]++|\\\\.)*+"|[{}\\[\\]:,]|true|false|null|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?')
-	var matches: Array[RegExMatch] = tokens.search_all(json)
+	var matches: Array[HorizonGroupJsonData.Token] = HorizonGroupJsonData.tokenize(json)
+	if matches.is_empty(): return false
+	var containers: Array = []
 	var stack: Array[bool] = []
 	var data_next: bool = false
 	for index: int in range(matches.size()):
 		var text: String = matches[index].get_string()
 		if text in ["{", "["]:
+			containers.append({} if text == "{" else null)
 			stack.append(data_next or (not stack.is_empty() and stack.back()))
 			data_next = false
 		elif text in ["}", "]"]:
-			if stack.is_empty(): return false
+			if stack.is_empty() or (text == "}") != (containers.back() is Dictionary): return false
+			containers.pop_back()
 			stack.pop_back()
 		elif text.begins_with('"') and index + 1 < matches.size() and matches[index + 1].get_string() == ":":
-			data_next = JSON.parse_string(text) == "data"
+			var key: Variant = HorizonGroupJsonData._canonicalString(text)
+			if not key is String or containers.is_empty() or not containers.back() is Dictionary or containers.back().has(key): return false
+			containers.back()[key] = true
+			data_next = key == '"data"'
 		elif text not in [":", ","]:
 			if not text.begins_with('"') and text not in ["true", "false", "null"] and not (data_next or (not stack.is_empty() and stack.back())):
 				if not text.is_valid_int() or text.length() > 17 or not HorizonPlayerValues._safeNumber(int(text)): return false

@@ -1,5 +1,8 @@
 extends Node
 ## Explicit UI actions only. Preserve the reviewed revisions/request IDs after a timeout.
+var _member_context: Dictionary = {}
+var _member_pages: Dictionary = {}
+var _member_ticket: int = 0
 
 func refresh_groups() -> Dictionary:
 	var horizon: Node = _authorized()
@@ -13,10 +16,45 @@ func inspect_group(group_id: String) -> Dictionary:
 
 ## Render each page with its revision. If it changes, ask for an explicit restart.
 ## This never drains every page or promises one snapshot across multiple HTTP calls.
-func load_member_page(group_id: String, after_user_id: String = "", limit: int = 50) -> Dictionary:
+func load_member_page(group_id: String, after_user_id: String = "", limit: Variant = null) -> Dictionary:
 	var horizon: Node = _authorized()
 	if horizon == null: return _failure("SESSION_REQUIRED")
-	return await horizon.groups.getMembers(horizon.auth.getCurrentUser().userId, group_id, after_user_id, limit)
+	var context: Dictionary = _member_scope(horizon)
+	if context != _member_context:
+		_member_pages.clear()
+		_member_context = context
+	# Null is the sample default, read from the current authenticated own snapshot.
+	# An explicit size is passed unchanged to the SDK API and server policy.
+	if limit == null:
+		var own: Dictionary = horizon.groups.getCurrentGroups()
+		if own.get("userId") != context.user or not own.get("limits") is Dictionary:
+			return _failure("CURRENT_LIMITS_REQUIRED")
+		limit = own.limits.get("memberPageSize")
+	if typeof(limit) != TYPE_INT or limit < 1 or limit >= 2147483647: return _failure("INVALID_PAGE")
+	var previous: Dictionary = _member_pages.get(group_id, {})
+	var cursor: String = after_user_id
+	var restarted: bool = false
+	if not cursor.is_empty():
+		if previous.is_empty(): return _failure("MEMBER_PAGE_RESTART_REQUIRED")
+		if previous.limit != limit:
+			cursor = ""
+			restarted = true
+			_member_pages.erase(group_id)
+		elif previous.cursor != cursor: return _failure("MEMBER_PAGE_RESTART_REQUIRED")
+	_member_ticket += 1
+	var ticket: int = _member_ticket
+	var result: Dictionary = await horizon.groups.getMembers(context.user, group_id, cursor, limit)
+	if context != _member_scope(horizon) or ticket != _member_ticket: return _failure("STALE_RESPONSE")
+	if result.get("success", false):
+		if not cursor.is_empty() and result.data.revision != previous.revision:
+			_member_pages.erase(group_id)
+			return _failure("MEMBER_PAGE_RESTART_REQUIRED")
+		_member_pages[group_id] = {"limit": limit, "revision": result.data.revision, "cursor": result.data.nextAfterUserId}
+		result.restarted = restarted
+	return result
+
+func _member_scope(horizon: Node) -> Dictionary:
+	return {"user": horizon.auth.getCurrentUser().userId, "project": horizon._http.apiKey, "session": horizon._http.sessionToken, "host": horizon._http.activeHost, "generation": horizon._http.getContextGeneration()}
 
 func load_pending(group_id: String) -> Dictionary:
 	var horizon: Node = _authorized()

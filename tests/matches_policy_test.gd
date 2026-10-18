@@ -205,9 +205,9 @@ func _run() -> void:
 	var failed_callback: Array[bool] = [false]
 	validated.run_start_failed.connect(func(_error: String,_code: String): failed_callback[0] = validated._claimRunStart() == 0,CONNECT_ONE_SHOT)
 	ok((await validated.startRun("ranked")).is_empty() and failed_callback[0] and validated._runStartLease == 0)
-	for number: int in range(520): manager._versions[str(number)] = number
-	manager._trim(manager._versions,512)
-	ok(manager._versions.size() == 512)
+	for number: int in range(520): manager._cache[str(number)] = number
+	manager._trim(manager._cache,8)
+	ok(manager._cache.size() == 8)
 	if failures == 0: print("PASS: Matches native policy checks=%s" % checks)
 	realtime.free()
 	http.queue_free()

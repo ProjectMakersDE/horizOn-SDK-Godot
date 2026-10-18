@@ -1530,3 +1530,26 @@ The complete native transport gate includes all ten real HTTP routes, more than
 2,048 retained open listings after quota lowering, original bytes on retry,
 known-result restart and original escrow claim/discard/replay. Its artificial
 loopback fixture is not evidence of a hosted deployment or an exported Web game.
+
+The Groups example's `load_member_page(groupId, afterUserId)` derives its default
+size from the current authenticated `getCurrentGroups().limits.memberPageSize`.
+Read own Groups first; missing or stale auth-context limits cause no member request.
+A changed default size restarts from the first page and returns `restarted: true`.
+An explicit third argument stays unchanged on the wire. A continuation without a
+known original page or with a changed revision requires an explicit page restart.
+
+Minimal Match/final-revision→run-ID bindings are retained through the current
+authenticated context, including 201 distinct pending runs. Auth changes clear
+this local map; there is no 128-source eviction and no copied historical state,
+items or rewards. Its local memory may grow across reads, separate from server
+storage and the size of any single response frame.
+
+Group revision floors likewise retain only minimal IDs and revisions until auth changes, including 257 retained groups after policy is lowered to 1. They hold no copied group content.
+
+Minimal Match revision/time watermarks also survive more than512 retained entries until auth changes. Payload caches and polling-hint caches keep their existing small bounds.
+
+Groups responses aggregate independent BSON records and can duplicate a group in a mutation. A6MiB control-character name needs about36MiB JSON; the same mutation can exceed72MiB. Groups alone parses its already received body/fragments at their actual length, preserving strict field/grammar/depth checks. There is no derived32/96/192MiB aggregate product quota. Available engine/HTTP memory remains a technical client limit; a parse/transport failure must preserve the original for explicit recovery. Other feature frames and small payload caches are unchanged.
+
+Only NUL-containing Groups `name`/`description` values use the existing `HorizonItemStringData` carrier; ordinary strings and the typed `updateGroup(...,name:String,description:String,...)` signature stay unchanged. Display with `getDisplayPreview()`; never roundtrip that preview. `GroupView.nameJson`/`descriptionJson` retain the complete original JSON string tokens. Persist those token strings, the reviewed revision and original data JSON, then explicitly call `updateGroupOriginalMetadata(user,group,revision,nameJson,descriptionJson,mode,data)` for a lossless metadata edit/retry. The typed String API rejects a carrier instead of silently writing a replacement character. The helper sends one attempt and never changes the saved revision or tokens. Groups tokenizes complete received strings without PCRE's fixed match budget; metadata writes strictly escape control characters.
+
+The Groups data wrapper also compares original NUL-containing JSON keys/values losslessly: NUL and U+FFFD never prove equivalent duplicate group data. Its native dictionary preview can replace NUL or merge such keys and is display-only; always keep `getJson()` for an unchanged data roundtrip.

@@ -75,6 +75,13 @@ func _run() -> void:
 	assert(not fragments.has("_invalid") and HorizonGroupJsonData.fromJson(fragments[GROUP]).getPreview() == {"a":1.0,"b":"é"}, "Indent/order/string-escape differences must not reject a committed mutation")
 	assert(HorizonGroupJsonData.extract(repeated.replace('"a": 1', '"a": 2')).has("_invalid"), "Conflicting duplicate group data fails closed")
 
+	var nul_data: String = '{"group":{"id":"' + GROUP + '","data":{"x":"a\\u0000z"}},"groups":[{"id":"' + GROUP + '","data":{"x":"a\\ufffdz"}}]}'
+	assert(HorizonGroupJsonData.extract(nul_data).has("_invalid"), "NUL and U+FFFD data values cannot prove the same source")
+	assert(not HorizonGroupJsonData.extract(nul_data.replace('a\\ufffdz','\\u0061\\u0000z')).has("_invalid"), "Equivalent NUL string spellings share one source")
+	var nul_keys: String = '{"\\u0000":1,"\\ufffd":2}'
+	assert(HorizonGroupJsonData.fromJson(nul_keys) != null and HorizonGroupJsonData.fromJson(nul_keys).getJson() == nul_keys, "Distinct lossless keys remain distinct")
+	assert(HorizonGroupJsonData.fromJson('{"\\u0000":1,"\\u0000":2}') == null, "Duplicate NUL keys still fail closed")
+
 	assert(HorizonGroupJsonData.fromJson('{"a":1,"\\u0061":2}') == null and HorizonGroupJsonData.fromJson('[]') == null)
 	assert(HorizonGroupJsonData.fromJson('{"a":1e999}') == null)
 	var exact: Dictionary = _group(1)
@@ -83,6 +90,13 @@ func _run() -> void:
 	http.responses = [{"data": exact, "raw": raw}]
 	var restored: Dictionary = await groups.getGroup(USER, GROUP)
 	assert(restored.success and restored.data.data.getJson() == original_data)
+	var nul_row: Dictionary = _group(1)
+	nul_row.data = JSON.parse_string(nul_keys)
+	var nul_wire: String = JSON.stringify(nul_row).replace(JSON.stringify(nul_row.data), nul_keys)
+	http.responses = [{"data": nul_row, "raw": nul_wire}]
+	var nul_read: Dictionary = await groups.getGroup(USER, GROUP)
+	assert(nul_read.success and nul_read.data.data.getJson() == nul_keys, "The actual Groups wire guard preserves distinct original NUL/replacement keys")
+
 	var preview: Dictionary = restored.data.data.getPreview()
 	preview.seed = 0
 	assert(restored.data.data.getJson() == original_data and not groups.getCurrentGroups().groups[0].data.getPreview().is_empty())
@@ -146,13 +160,16 @@ func _run() -> void:
 	http.responses = [{"failure": 409, "code": "REQUEST_NOT_FOUND"}]
 	assert((await groups.acceptInvite(USER, GROUP, 4294967296, original)).errorCode == "REQUEST_NOT_FOUND")
 	assert(http.calls[-1].body == {"userId": USER, "expectedRevision": 4294967296, "requestId": original} and groups.getCurrentGroups().is_empty())
-	# Bound detail revision memory, independent of lifetime queried group IDs.
+	# Preserve minimal detail revision floors throughout the current auth context.
+	var old_floor_count: int = groups._floors.size()
 	for index: int in range(60):
 		var row: Dictionary = _group(1)
 		row.id = "00000000-0000-4000-8000-%012d" % (9000 + index)
 		http.responses = [{"data": row}]
 		assert((await groups.getGroup(USER, row.id)).success)
-	assert(groups._floors.size() == 48)
+	assert(groups._floors.size() == old_floor_count + 60 and groups._floors[GROUP.to_lower()] == 3)
+	http.responses = [{"data": _group(2)}]
+	assert((await groups.getGroup(USER, GROUP)).errorCode == "STALE_RESPONSE")
 	# Queue capture freezes the original metadata before any wait; calls are serialized.
 	auth.signout_completed.emit()
 	http.responses = [{"data": _snapshot(1, 1), "delay": .1}, {"failure": 409, "code": "REVISION_CONFLICT"}]
@@ -191,7 +208,7 @@ func _run() -> void:
 	groups.groups_loaded.disconnect(callback)
 	http.sessionToken = ""
 	assert((await groups.getGroups(USER)).errorCode == "SESSION_REQUIRED")
-	print("Godot Groups policy: safe original revisions/IDs, arbitrary object data, bounded pages/floors, downgrade retention, atomic normalization and queue/callback/context ABA passed")
+	print("Godot Groups policy: safe original revisions/IDs, arbitrary object data, bounded pages/auth-context revision floors, downgrade retention, atomic normalization and queue/callback/context ABA passed")
 	http.queue_free()
 	quit(0)
 
