@@ -1,21 +1,30 @@
 ## ============================================================
 ## horizOn SDK - Email Sending Minimal Example
 ## ============================================================
-## What it does: signs in anonymously, sends a transactional email
-## to the current user from a Dashboard template, then checks the
+## What it does: connects, sends a transactional email to an
+## explicitly configured recipient from a Dashboard template, then checks the
 ## delivery status of that email.
 ## App key: imported via Project > Tools > horizOn: Import Config.
 ## Start path: attach this script to a Node and run the scene, or
 ## run it via the shared examples runner (features_runner.tscn).
 ## Replace "welcome" with a template slug that exists in your
 ## Dashboard before running.
+## Set recipient_user_id to an existing active, email-verified user
+## with a nonempty email in the same project. Anonymous users are
+## not eligible recipients. This sample creates no user.
 ## Expected output: a "Queued" line with an email ID and a status
 ## line, or a clear error line on failure.
 ## ============================================================
 extends Node
 
+@export var recipient_user_id: String = ""
+
 
 func _ready() -> void:
+	if recipient_user_id.strip_edges().is_empty():
+		push_error("Set recipient_user_id to an active, email-verified user in this project.")
+		return
+
 	var horizon := get_node_or_null("/root/Horizon")
 	if horizon == null:
 		push_error("Horizon autoload not found. Enable the horizOn SDK plugin.")
@@ -32,17 +41,10 @@ func _ready() -> void:
 		push_error("Could not connect to any horizOn server.")
 		return
 
-	var signed_in: bool = await horizon.quickSignInAnonymous("Player1")
-	if not signed_in:
-		push_error("Sign-in required to resolve the recipient user ID.")
-		return
-
-	var user_id: String = horizon.getCurrentUser().userId
-
 	# send_email(user_id, template_slug, variables, language, scheduled_at="").
 	# Returns a Dictionary with id, status, scheduledAt, or {} on failure.
 	var result: Dictionary = await horizon.email_sending.send_email(
-		user_id, "welcome", {"playerName": "Player1"}, "en")
+		recipient_user_id, "welcome", {"playerName": "Player1"}, "en")
 	if result.is_empty():
 		push_error("Email was not queued.")
 		return
