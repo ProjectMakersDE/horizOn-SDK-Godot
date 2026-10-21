@@ -169,8 +169,8 @@ For iOS, follow the [plugin build and capability requirements](addons/horizon_sd
 and configure Apple sign-in for your project. Outside iOS, supply your registered
 Services ID and redirect URI, capture the redirect in your platform integration,
 then call `signInApple(identity_token)` or `signUpApple(...)` with the resulting
-token. The browser-opening convenience method returns `APPLE_NOT_CONFIGURED`
-instead of waiting for that external handoff. Actual Apple sign-in on an iOS
+token. The browser-opening convenience method reports `APPLE_NOT_CONFIGURED`
+and returns `false` instead of waiting for that external handoff. Actual Apple sign-in on an iOS
 device, other platform/provider flows and App Store acceptance have not been
 verified.
 
