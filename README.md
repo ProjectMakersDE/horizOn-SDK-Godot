@@ -121,6 +121,12 @@ Horizon.disconnect_from_server()
 
 ### Authentication
 
+Google sign-in/sign-up accepts an authorization code obtained by your game's
+platform-specific Google integration and requires the matching OAuth client and
+redirect configuration with Google and horizOn. The SDK does not obtain that code.
+Real Google/Apple provider sign-in on target devices is not established by the
+SDK's native transport tests.
+
 `quickSignInAnonymous()` restores an existing stored identity and returns `false` if that
 restore fails; it creates a player only when no anonymous identity is stored. Reading a
 cached token never deletes it, including unusable legacy tokens longer than 32 characters.
@@ -141,10 +147,10 @@ await Horizon.auth.restoreAnonymousSession()
 await Horizon.auth.signUpApple(identity_token, "Jane", "Doe")
 await Horizon.auth.signInApple(identity_token)
 
-# Apple Sign-In - convenience flow
-# - iOS: opens the native ASAuthorizationController sheet via the bundled
-#        classic .gdip plugin (addons/horizon_sdk/ios/HorizonAppleSignIn/)
-# - Other platforms: opens the system browser to the customer Services ID OAuth URL
+# Apple Sign-In - native iOS path, with a built and enabled classic .gdip plugin
+# (addons/horizon_sdk/ios/HorizonAppleSignIn/).
+# Outside iOS this only opens the Services ID OAuth URL and returns false;
+# your app must handle the redirect and call signInApple(token) itself.
 await Horizon.auth.sign_in_with_apple("com.customer.web")
 
 # Get current user
@@ -158,6 +164,15 @@ if Horizon.isSignedIn():
 # Sign out
 Horizon.auth.signOut()
 ```
+
+For iOS, follow the [plugin build and capability requirements](addons/horizon_sdk/ios/HorizonAppleSignIn/README.md)
+and configure Apple sign-in for your project. Outside iOS, supply your registered
+Services ID and redirect URI, capture the redirect in your platform integration,
+then call `signInApple(identity_token)` or `signUpApple(...)` with the resulting
+token. The browser-opening convenience method reports `APPLE_NOT_CONFIGURED`
+and returns `false` instead of waiting for that external handoff. Actual Apple sign-in on an iOS
+device, other platform/provider flows and App Store acceptance have not been
+verified.
 
 ### Leaderboards
 
@@ -599,6 +614,12 @@ Use built-in constants for consistent breadcrumb categorization:
 ### Email Sending
 
 **Email Sending** lets your game send transactional emails to registered players. Create multi-language HTML templates with variable placeholders in the horizOn Dashboard, then trigger immediate or scheduled email delivery from your game using the SDK. Emails are sent through your own SMTP server -- horizOn handles the queue, rendering, and scheduling while you keep full control over branding and deliverability.
+
+The recipient must already be an active, email-verified user with a nonempty email
+in the API key's project; anonymous users are not eligible. Set `recipient_user_id`
+on the [minimal example](addons/horizon_sdk/examples/features/email_sending_example.gd)
+to that user's ID and configure the template first. The example does not create or
+sign in a replacement user. A queued/status response is separate from external SMTP delivery.
 
 ```gdscript
 # Send immediate email
