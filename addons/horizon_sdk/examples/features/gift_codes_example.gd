@@ -1,60 +1,59 @@
-## ============================================================
-## horizOn SDK - Gift Codes Minimal Example
-## ============================================================
-## What it does: signs in anonymously, validates a gift code, then
-## redeems it and parses the reward data.
-## App key: imported via Project > Tools > horizOn: Import Config.
-## Start path: attach this script to a Node and run the scene, or
-## run it via the shared examples runner (features_runner.tscn).
-## Replace "WELCOME2026" with a real code from your Dashboard
-## before running.
-## Expected output: a validity line and a redemption result with
-## parsed rewards, or a clear error line on failure.
-## ============================================================
+## Configure WELCOME2026 values separately from arbitrary giftData in the Dashboard.
+## Original campaign/count/revision are flushed before HTTP and retained on every uncertain/error outcome.
 extends Node
-
+const Pending = preload("res://addons/horizon_sdk/examples/features/pending_gift_code.gd")
+const Identity = preload("res://addons/horizon_sdk/examples/features/pending_statistics.gd")
 const GIFT_CODE := "WELCOME2026"
 
+var _busy: bool = false
 
-func _ready() -> void:
-	var horizon := get_node_or_null("/root/Horizon")
-	if horizon == null:
-		push_error("Horizon autoload not found. Enable the horizOn SDK plugin.")
-		return
+## Bind these to explicit UI actions. Startup never consumes a code.
+func redeemConfiguredCode() -> void:
+	await _redeem(false)
 
-	# Error handling via signals.
-	horizon.giftCodes.code_redeem_failed.connect(func(code: String, error: String):
-		push_error("Gift code %s redemption failed: %s" % [code, error]))
+func retryPendingRedemption() -> void:
+	await _redeem(true)
 
-	var connected: bool = await horizon.connect_to_server()
-	if not connected:
-		push_error("Could not connect to any horizOn server.")
-		return
+func _redeem(retry_only: bool) -> void:
+	if _busy: return
+	_busy = true
+	await _send(retry_only)
+	_busy = false
 
-	var signed_in: bool = await horizon.quickSignInAnonymous("Player1")
-	if not signed_in:
-		push_error("Sign-in required before using gift codes.")
-		return
+func _send(retry_only: bool) -> void:
+	var horizon: Node = get_node_or_null("/root/Horizon")
+	if horizon == null or not await horizon.connect_to_server(): return
+	var project: String = horizon.getConfig().api_key
+	if not await _authenticate(horizon,project): return
+	var user_id: String = horizon.auth.getCurrentUser().userId
+	if horizon._http.apiKey != project: return
+	var loaded: Dictionary = Pending.load_pending(project,user_id)
+	if not loaded.success: push_error("Saved V1/corrupt intent needs recovery; original files retained"); return
+	var pending: Dictionary = loaded.pending
+	if pending.is_empty():
+		if retry_only: return
+		pending = await horizon.giftCodes.prepareRedemption(GIFT_CODE)
+		if pending.is_empty() or horizon._http.apiKey != project or horizon.auth.getCurrentUser().userId != user_id: return
+		if not Pending.store(project,pending): return
+	elif not retry_only:
+		push_warning("Retry or reconcile the pending intent first"); return
+	var result: Dictionary = await horizon.giftCodes.redeemPreparedParsed(pending)
+	if not result.get("success",false): push_warning("Original tuple retained: " + horizon.giftCodes.getLastErrorCode()); return
+	if horizon._http.apiKey != project or horizon.auth.getCurrentUser().userId != user_id: return
+	if not Pending.confirm(project,pending): push_warning("Confirmed tuple remains available for safe replay")
+	print("Current state: %s, replayed=%s" % [result.playerValues,result.replayed])
 
-	# validate returns true/false, or null on error.
-	var is_valid: Variant = await horizon.giftCodes.validate(GIFT_CODE)
-	if is_valid == null:
-		push_error("Could not validate the gift code.")
-		return
-	print("Gift code %s valid: %s" % [GIFT_CODE, is_valid])
-	if not is_valid:
-		print("Code is not valid, skipping redemption.")
-		return
-
-	# redeemParsed redeems the code and parses giftData as a rewards Dictionary.
-	var result: Dictionary = await horizon.giftCodes.redeemParsed(GIFT_CODE)
-	if result.is_empty():
-		push_error("Redemption returned no result.")
-		return
-
-	if result.get("success", false):
-		print("Redeemed. Rewards: %s" % JSON.stringify(result.get("rewards", {})))
-		# Cosmetics unlocked by the code (`grants` in the gift data), [] without grants.
-		print("Unlocked cosmetics: %s" % [result.get("grantedUnlocks", [])])
-	else:
-		print("Redemption rejected: %s" % result.get("message", ""))
+func _authenticate(horizon: Node,project: String) -> bool:
+	if horizon.auth.isSignedIn(): return Identity.mark_identity(project)
+	var cache: ConfigFile = ConfigFile.new()
+	var loaded: Error = cache.load("user://horizon_cache.cfg")
+	if loaded != OK and loaded != ERR_FILE_NOT_FOUND: return false
+	if cache.has_section_key("cache",HorizonAuth.CACHE_KEY_ANONYMOUS_TOKEN):
+		if not Identity.mark_identity(project): return false
+		var token: Variant = cache.get_value("cache",HorizonAuth.CACHE_KEY_ANONYMOUS_TOKEN)
+		if not token is String or token.is_empty() or token.length() > 32: return false
+		return await horizon.auth.signInAnonymous(token)
+	var marker: String = Identity.identity_marker(project)
+	if FileAccess.file_exists(marker) or FileAccess.file_exists(marker + ".next"): return false
+	if not Identity.reserve_signup(project): return false
+	return await horizon.auth.signUpAnonymous("GiftCodePlayer")

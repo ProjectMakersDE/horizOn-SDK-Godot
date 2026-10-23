@@ -12,6 +12,7 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by ProjectMakers.
 - **News**: In-game news and announcements
 - **Gift Codes**: Validate and redeem promotional codes, unlock cosmetics
 - **Player Profile**: Avatar, frame and badges per player, shown on leaderboards
+- **Groups**: Explicit membership, roles, private group data and bounded member pages
 - **Validated Actions**: Server-checked runs: single-use tickets, server seed, rule checks before a score is written
 - **Feedback**: Submit bug reports and feature requests
 - **User Logs**: Server-side player event tracking
@@ -213,23 +214,18 @@ for entry in entries:
 Horizon.news.clearCache()
 ```
 
-### Gift Codes (Horizon.giftCodes)
+### Gift Codes
 
-`redeem` needs a signed-in player and sends the player session (`Authorization: Bearer`). The server only redeems codes for the player who owns that session.
+Prepare once, durably persist the complete scoped intent, then send it. The feature example provides separate explicit redeem/retry actions and a guarded file store.
 
 ```gdscript
-# Validate a code
-var isValid = await Horizon.giftCodes.validate("ABCD-1234")
-
-# Redeem a code
-var result: Dictionary = await Horizon.giftCodes.redeem("ABCD-1234")
-if result.get("success", false):
-    var giftData = result.get("giftData", "")
-    print("Rewards: %s" % giftData)
-    # Cosmetics unlocked by the code (`grants`), [] for codes without grants.
-    # The cached player profile is dropped, the next getProfile() shows them.
-    print("Unlocked: %s" % result.get("grantedUnlocks", []))
+var intent: Dictionary = await Horizon.giftCodes.prepareRedemption("ABCD-1234")
+# Persist all intent fields for this project/player BEFORE sending.
+var result: Dictionary = await Horizon.giftCodes.redeemPrepared(intent)
+# After uncertainty/restart: load and resend the same intent; never prepare a replacement automatically.
 ```
+
+Counts/revisions are canonical Int64 decimal strings. Replay has `alreadyApplied/replayed=true`, current Player Values, null giftData and empty grants. Replace current balances, never add grants. V1 `redeem(code[, id])` returns `UPGRADE_REQUIRED`; protected `MIGRATION_REQUIRED`, `COUNT_AHEAD`, `CAMPAIGN_CHANGED`, `COUNTER_EXHAUSTED` and domain errors require reconciliation. An intent cannot move to another player/project or a reused visible code. `redeemPreparedParsed` only parses fresh opaque giftData and never turns it into authoritative balances.
 
 ### Player Profile (Horizon.playerProfile)
 
@@ -413,6 +409,10 @@ Horizon.sdk_disconnected.connect(func(): print("Disconnected"))
 ```
 
 ### Authentication
+
+`quickSignInAnonymous()` never replaces a stored identity after failed restoration. Cached
+tokens, including unusable legacy tokens longer than 32 characters, stay stored for
+reconciliation. Only explicitly clearing the identity permits a new anonymous account.
 ```gdscript
 Horizon.auth.signup_completed.connect(func(user): print("Signed up: %s" % user.userId))
 Horizon.auth.signup_failed.connect(func(error): print("Signup failed: %s" % error))
@@ -565,9 +565,113 @@ entry.languageCode # e.g., "en"
 ## Support
 
 - Documentation: https://horizon.pm/quickstart
-- Discord: https://discord.gg/projectmakers
+- Discord: https://discord.gg/JFmaXtguku
 - Issues: https://github.com/ProjectMakersDE/horizOn-SDK-Godot/issues
 
 ## License
 
 MIT License - Copyright (c) ProjectMakers
+
+
+## Groups: explicit reviewed player commands
+
+`Horizon.groups` returns dictionaries `{success,data,errorCode,error}` and emits
+`groups_loaded`, `groups_updated`, `group_loaded`, `members_loaded`, `pending_loaded`
+and `groups_failed(error,code)`. Read methods are `getGroups(user_id)`,
+`getGroup(user_id,group_id)`, `getMembers(user_id,group_id,after_user_id="",limit=50)`
+and `getPending(user_id,group_id)`. A page is one bounded HTTP request, with its own
+revision and explicit cursor; there is no automatic page drain or polling. Restart
+explicitly if a later page has another group revision. Public member displays keep
+nullable names/profile IDs and exclude credentials, private profiles and activity.
+
+```gdscript
+var own: Dictionary = await Horizon.groups.getGroups(user_id)
+if own.success:
+    # Capture this original revision when the player confirms creation.
+    var created: Dictionary = await Horizon.groups.createGroup(
+        user_id, own.data.revision, "Guild", "Description", "open", {"region": "EU"})
+    if created.success:
+        var group: Dictionary = created.data.group
+        var page: Dictionary = await Horizon.groups.getMembers(user_id, group.id)
+        # Render/confirm later actions using this reviewed group revision.
+        print(group.id, group.revision, page.data if page.success else page.errorCode)
+```
+
+`createGroup(user,expected_player_revision,name,description="",join_mode="open",data={})`
+accepts no caller group ID. `updateGroup(user,group,expected_revision,name,description,join_mode,data)`
+replaces every metadata field. Both use JSON objects (including empty `{}`) and finite
+numbers. Current name, description, data-byte and data-depth policies are server
+System Config values; old120/1024/2048-byte and depth16 defaults are not SDK ceilings.
+Godot's independent JSON/Variant serialization boundary is1024 nested containers.
+Dotted, empty and dollar-prefixed data keys and decimal data fields
+remain legal. `GroupView.data` is a `HorizonGroupJsonData` value containing original
+JSON text, including large integers and high-precision number lexemes; only
+insignificant whitespace outside string values is removed. Pass that
+value unchanged to `updateGroup` when editing other metadata. `getJson()` is
+lossless; `getPreview()` creates a fresh display dictionary using Godot numbers and
+may round values, so never use that preview for an unchanged roundtrip. Create/update
+accept either a new Dictionary (serialized once at full engine precision) or
+`HorizonGroupJsonData.fromJson(original_json)`. The wrapper has no public mutation
+method; invalid JSON, duplicate keys, engine-depth overflow and nonfinite values are rejected.
+Protocol revisions/counts require exact safe integer wire lexemes.
+
+All fourteen actions begin `(user_id,group_id,expected_revision)`:
+
+| Method | Additional arguments |
+|---|---|
+| `joinGroup`, `requestJoin`, `leaveGroup`, `deleteGroup` | none |
+| `invitePlayer`, `removeMember`, `transferLeadership` | `target_user_id` |
+| `acceptInvite`, `declineInvite`, `cancelRequest` | original `request_id` |
+| `cancelInvite`, `acceptRequest`, `declineRequest` | `target_user_id`, original `request_id` |
+| `setMemberRole` | `target_user_id`, `role` (`officer`/`member`) |
+
+Every command uses exactly one transport attempt, including PUT, code-free429,
+503 and timeout. It never refreshes revisions, replaces request UUIDs or creates a
+new guest after failure. Read state and ask for a new explicit decision after an
+uncertain result. Mutations return `{groups:MyGroupsView,group:GroupView|null}`;
+`groups` is the acting player's complete replacement snapshot, never the target's.
+`getCurrentGroups()` gives a deep copy and is a cached view, not authorization.
+Private data is exposed only with the current session's member role; pending
+metadata always strips it. Invalid or partial responses never replace the cache or
+advance freshness floors. Project/host/session ABA, queued work, signout and
+synchronous callbacks fence old responses. Detail revision/server-time floors survive cache
+clears and remain for every observed group in the current authentication context; there is no
+48-group admission ceiling. An authentication-context change resets these floors.
+
+All eleven `limits` fields are positive Int32 System Config values:
+`maxMembers`, `maxGroupsPerPlayer`, `maxInvitations`, `maxJoinRequests`, `maxDataBytes`,
+`memberPageSize`, `maxPlayerInvitations`, `maxPlayerRequests`, `maxNameBytes`,
+`maxDescriptionBytes`, `maxDataDepth`. Retained memberships and pending lists are
+read completely after lowering policy. Legacy pending `createdAt` is nullable or absent.
+An explicit member-page limit follows current server policy;50 is a request default.
+Server limits and role/block checks are
+authoritative. A full Inbox error stays atomic at the server and is returned for an
+explicit UI decision. Sole-leader deletion cannot dismantle a nonempty group;
+transfer leadership before leaving. No group currency, hidden reads or admin write
+impersonation is added. Optional hosted `groups:<groupId>` realtime is only an
+invalidation hint; subscribe explicitly after membership and reload HTTP after
+reconnect. simpleServer supports the same REST contract and no realtime transport.
+
+The runnable `examples/features/groups_example.gd` contains explicit create/read,
+one member page, all confirmed actions and no identity/revision fallback. Native
+policy and exact real loopback HTTP fixtures execute that actual sample with two
+players, all20 routes, role/transfer/leave, full-Inbox refusal and uncertain command
+reconciliation. These transport tests are distinct from hosted/database acceptance.
+A mutation is one HTTP request; bounded read retries follow the shared transport
+policy. Group/player CAS, block/profile projections and Inbox delivery are server
+costs; the SDK does not multiply them through polling or automatic page loops.
+
+### Items
+
+`Horizon.items` exposes `getInventory`, one-page `getCatalog`, `adjustProperties`,
+`setEquipped` and `discardItem`, with `{success,data,errorCode,error}` results and
+explicit original instance/revision arguments. Every inventory mutation sends once;
+read and reconcile uncertainty explicitly. Player Values offers/receipts add
+`itemRewards`/`items` with backwards-compatible empty defaults. Persist purchase IDs
+before HTTP and fetch inventory explicitly after success. The executable
+`examples/features/items_example.gd` and the repository README describe durable
+recovery, strict integer/canonical property limits and lossless NUL-string values.
+
+Only NUL-containing Groups `name`/`description` values use the existing `HorizonItemStringData` carrier; ordinary strings and the typed `updateGroup(...,name:String,description:String,...)` signature stay unchanged. Display with `getDisplayPreview()`; never roundtrip that preview. `GroupView.nameJson`/`descriptionJson` retain the complete original JSON string tokens. Persist those token strings, the reviewed revision and original data JSON, then explicitly call `updateGroupOriginalMetadata(user,group,revision,nameJson,descriptionJson,mode,data)` for a lossless metadata edit/retry. The typed String API rejects a carrier instead of silently writing a replacement character. The helper sends one attempt and never changes the saved revision or tokens. Groups tokenizes complete received strings without PCRE's fixed match budget; metadata writes strictly escape control characters.
+
+The Groups data wrapper also compares original NUL-containing JSON keys/values losslessly: NUL and U+FFFD never prove equivalent duplicate group data. Its native dictionary preview can replace NUL or merge such keys and is display-only; always keep `getJson()` for an unchanged data roundtrip.

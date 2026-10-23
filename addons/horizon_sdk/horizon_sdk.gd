@@ -42,6 +42,9 @@ var _http: HorizonHttpClient
 var _logger: HorizonLogger
 
 ## Feature managers
+var realtime: HorizonRealtime
+var playerValues: HorizonPlayerValues
+var inbox: HorizonInbox
 var auth: HorizonAuth
 var leaderboard: HorizonLeaderboard
 var cloudSave: HorizonCloudSave
@@ -50,6 +53,15 @@ var localization: HorizonLocalization
 var news: HorizonNews
 var giftCodes: HorizonGiftCodes
 var playerProfile: HorizonPlayerProfile
+var statistics: HorizonStatistics
+var achievements: HorizonAchievements
+var sharedObjects: HorizonSharedObjects
+var matches: HorizonMatches
+var chat: HorizonChat
+var items: HorizonItems
+var marketplace: HorizonMarketplace
+var groups: HorizonGroups
+var friends: HorizonFriends
 var validatedActions: HorizonValidatedActions
 var feedback: HorizonFeedback
 var userLogs: HorizonUserLogs
@@ -140,6 +152,14 @@ func _initializeManagers() -> void:
 	auth = HorizonAuth.new()
 	auth.initialize(_http, _logger)
 
+	realtime = HorizonRealtime.new()
+	add_child(realtime)
+	realtime.initialize(_http, auth)
+	playerValues = HorizonPlayerValues.new()
+	playerValues.initialize(_http, auth)
+	inbox = HorizonInbox.new()
+	inbox.initialize(_http, auth, playerValues)
+
 	# Leaderboard
 	leaderboard = HorizonLeaderboard.new()
 	leaderboard.initialize(_http, _logger, auth)
@@ -152,6 +172,27 @@ func _initializeManagers() -> void:
 	# Cloud Save
 	cloudSave = HorizonCloudSave.new()
 	cloudSave.initialize(_http, _logger, auth)
+
+	# Statistics
+	statistics = HorizonStatistics.new()
+	statistics.initialize(_http, _logger, auth)
+	achievements = HorizonAchievements.new()
+	achievements.initialize(_http, auth, inbox, statistics, playerValues)
+	sharedObjects = HorizonSharedObjects.new()
+	sharedObjects.initialize(_http, auth)
+	matches = HorizonMatches.new()
+	matches.initialize(_http, auth, validatedActions, realtime)
+	chat = HorizonChat.new()
+	add_child(chat)
+	chat.initialize(_http, auth, realtime)
+	items = HorizonItems.new()
+	items.initialize(_http, auth, playerValues)
+	marketplace = HorizonMarketplace.new()
+	marketplace.initialize(_http, auth)
+	groups = HorizonGroups.new()
+	groups.initialize(_http, auth)
+	friends = HorizonFriends.new()
+	friends.initialize(_http, auth)
 
 	# Remote Config
 	remoteConfig = HorizonRemoteConfig.new()
@@ -173,6 +214,7 @@ func _initializeManagers() -> void:
 	giftCodes = HorizonGiftCodes.new()
 	giftCodes.initialize(_http, _logger, auth)
 	giftCodes.setPlayerProfile(playerProfile)
+	giftCodes.setPlayerValues(playerValues)
 
 	# Feedback
 	feedback = HorizonFeedback.new()
@@ -299,9 +341,9 @@ func quickSignInAnonymous(display_name: String = "") -> bool:
 
 	# Try to restore existing session first
 	if auth.hasCachedAnonymousToken():
-		var restored := await auth.restoreAnonymousSession()
-		if restored:
-			return true
+		# A failed restore retains identity/progress. Creating another player requires
+		# an explicit decision by the game, never a fallback from an uncertain request.
+		return await auth.restoreAnonymousSession()
 
 	# Create new anonymous user
 	return await auth.signUpAnonymous(display_name)
