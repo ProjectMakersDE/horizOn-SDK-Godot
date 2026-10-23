@@ -1,3 +1,68 @@
+# [1.11.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.10.0...v1.11.0) (2026-10-23)
+
+
+### Bug Fixes
+
+* **achievements:** consume only normalized route response fields ([6826122](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/682612283cc704ab222dae80ed1a37860a37d9ec))
+* **auth:** preserve stored identity when anonymous restore fails ([eb8beeb](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/eb8beeb8e028a481f9d07012893d82b96696f17e))
+* **chat:** recover abandoned desktop history locks safely ([baa9e81](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/baa9e81c5737e7bf475022a0149a2da6cac3512e))
+* derive group sample pages from current authenticated limits ([a34bc22](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/a34bc228203df7fd7cbf9d1c13a5d492e3e9de18))
+* distinguish Apple error signal from boolean result ([8063c5b](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/8063c5bf7f6562b81c2d5bff19bd3b6941dae462))
+* distinguish NUL in Groups canonical keys and values ([0620437](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/06204371d18c57866df81cb213568b5bd3ec0130))
+* **docs:** correct achievement and group reference contracts ([1b6efde](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/1b6efde94636aed6c7f10a0d34445da5c1264097))
+* **examples:** protect statistics intent ownership and recovery ([4c61a38](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/4c61a38778650071e9135360c2d30f0c5edae916))
+* expose explicit disconnected chat snapshots ([3820d98](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/3820d98f9832146313199428844fdba5361487ff))
+* format empty achievement replay arrays safely ([8317784](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/8317784c30b696d1cb3f50523c696e57da5be91f))
+* **gift-codes:** match server Unicode blank ID validation ([7644c24](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/7644c24a110d4e0f7b6ef3cb286dfda03667c982))
+* **groups:** preserve original JSON data during metadata updates ([be0ff9e](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/be0ff9e1fec380c384fcf225de5ae52323c765b3))
+* handle compact achievements and invalidate atomic rewards ([19a4e56](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/19a4e5648a855d12b3ec90d3ed3da7b90ba9a69c))
+* honor configured social shared and match limits ([105baf5](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/105baf5496373ed9fb99870cb8e0251ae6f6f642))
+* **inbox:** persist only authorized original claim intents ([a308bc4](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/a308bc47217540aa07d380bc339dd65cf24e6790))
+* **inbox:** retain legacy group acceptance references ([d44c29a](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/d44c29a1e1ff64a50a3699700860539b66fa645a))
+* **items:** accept configured quotas and retained inventories ([#30](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/issues/30)) ([212d72b](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/212d72b3cbf9166f067790955abc6e2e87128168))
+* **marketplace:** avoid inherited reference method collision ([00bfa01](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/00bfa01ca456bf782cc95d50594ab0eb39848308))
+* **marketplace:** bind receipt revision to original intent ([13066af](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/13066afec198d523af75b4921024585e374b57a0))
+* **marketplace:** recover proven dead Godot send owners after process death ([086f076](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/086f0764deb58bbb08365551055e9e72a1fea86b))
+* **marketplace:** release send ownership when the Godot screen is destroyed ([8deea48](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/8deea483f93484a7e6b9faa802bc94e33cd7b41e))
+* preserve Groups metadata tokens and parse escaped aggregates ([446c88a](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/446c88a4a685721077b151502e8791512cae66ef))
+* preserve match watermarks with escaped groups transport regression ([c0d6831](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/c0d6831b7cb025cf1589a7ec6d6e0db01057bdba))
+* **readme:** link the horizOn Discord with its real invite code (TASK-1046) ([e314b54](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/e314b54258d0bb5d5c0f4c4b69bc8271ce94f619))
+* **realtime:** correlate subscription replies and acknowledge resync (TASK-995) ([7a50597](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/7a505976ec64580bde8f21d2a1ebb10ec7793b95))
+* require an eligible email sample recipient and bound OAuth claims ([e35c105](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/e35c105cc1f77a7ca94674e164794ed6d0c8f7e7))
+* retain group revision floors throughout the auth context ([49d6fa5](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/49d6fa519b0c64028fa4aa80d8f0bade61929416))
+* retain large configured group metadata through all wire checks ([4bf5b9b](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/4bf5b9b7b36484b9e62fc5b0c57275dbbd191116))
+* retain ranked source bindings throughout the auth context ([6ec32c0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/6ec32c023060cf70d83e7d0f25c715b1897741df))
+* serialize large original match state without quadratic copies ([762e9a0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/762e9a04eb42365ca84e18da4547d5bedf0ceffc))
+* **statistics:** expose atomic Godot session batches (TASK-1005) ([4cf1329](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/4cf1329b4a5106ded107b5e6809ee03355b89c12))
+* **statistics:** honor server configured catalog limits ([7f2c7c6](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/7f2c7c6e83c76439235aacf0804f78e129ce2fb9))
+* tokenize escaped unicode runs without per-character regex backtracking ([1289f58](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/1289f58ca21a13921464fb1c784f0fcfd2569c51))
+* **transport:** jitter transient rate-limit retries ([eff01ae](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/eff01ae3ee14ec2ffff152c7dac00ecf924bc3ba))
+* use lossless key identity in Groups wire duplicate checks ([f819afd](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/f819afdc959cdbbe278d84408dcb7086afe1f813))
+
+
+### Features
+
+* **achievements:** add session-safe progression and reward handoff ([fbea93e](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/fbea93eb5fe8748da0f7150fbea040e27fce5bd6))
+* add explicit revision-safe friends flows ([39c2378](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/39c2378880fbdbc645b4b4f560c19de682a62cbf))
+* add push-driven chat with durable message recovery ([db0a83c](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/db0a83cb71715da555f8e0093bb2b24a8511879d))
+* **chat:** persist device history apart from bounded live feeds ([81fe2f0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/81fe2f0cdea726b3ab89538f349e25cd9ef31006))
+* **gift-codes:** expose safe value rewards and preserve redemption identity ([c75c1b5](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/c75c1b5545203d33c81fab219896d772ccc65c71))
+* **gift-codes:** persist exact V2 redemption intents ([72120fc](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/72120fcd01ddb8f67b637a6d67f27f17e07bf6ed))
+* **groups:** add explicit bounded Godot player operations ([590da08](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/590da08b76c567ddd0a0a5aa31e5cdd2cab534a9))
+* **inbox:** add session-safe snapshots and atomic reward claims ([b17f10a](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/b17f10a405c65535e7cd29e605d0de84d37b4fb0))
+* **inbox:** decode source notices and item returns with dynamic limits ([4b69859](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/4b69859d72472ffbe8b1fce6076c9f9f4dcb5ef8))
+* **items:** add safe inventory workflows and lossless properties ([b39d000](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/b39d000ae152736d5d80fa0a6dd8feeb4a97bdd1))
+* **marketplace:** add ten explicit app routes and original intent recovery ([03a1184](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/03a118404f72f912fc6f1a56e18888fa8f9d9d0e))
+* **matches:** add explicit Godot turn and ranked lifecycle ([fed96fe](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/fed96fe57b28abd48c5c2d3a9e1ed732e0247838))
+* **realtime:** add bounded Godot subscriptions and resync (TASK-995) ([1e4b8cc](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/1e4b8cc60797cc9e55a08ea1b3659a1ca26fbdf9))
+* **shared-objects:** add Godot REST and durable samples ([39e05fd](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/39e05fdc08d943eb08f8a81d2f900a6cab5c1f87))
+* **values:** add session-bound player values manager ([a177093](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/a1770932eb04b0d8eaf684992562fcb22ac498ae))
+
+
+### Performance Improvements
+
+* reuse identical Groups metadata token comparisons ([0fcf6b2](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/0fcf6b2127a05f94fe02a8cb4a6ddde085fa82ef))
+
 # [1.10.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.9.0...v1.10.0) (2026-10-11)
 
 
