@@ -1,3 +1,10 @@
+## [1.11.1](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.11.0...v1.11.1) (2026-11-15)
+
+
+### Bug Fixes
+
+* **matches:** handle the account open match limit ([a15e13f](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/a15e13f6619b73daa79dfdf8e5cedc9e04375349))
+
 # [1.11.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.10.0...v1.11.0) (2026-10-23)
 
 
