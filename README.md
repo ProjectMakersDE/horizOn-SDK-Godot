@@ -1316,6 +1316,10 @@ All seven current `limits` fields are retained: `activeMatches`, `stateBytes`,
 `retainedMatches`, `pendingInvites`, `settlementMatches`, `historyRetentionSeconds`,
 `rankedSettlementSeconds`. They are Int32 System Config values; retained count and
 history seconds may be zero. Old10/100/20 defaults do not cap returned lists.
+`createMatch` alone can also fail with `422` `ACCOUNT_MATCH_LIMIT_REACHED` when the
+account's open matches (status lobby, active or reporting, across all its projects) are
+at the plan limit, next to `ACTIVE_MATCH_LIMIT_REACHED` and `SETTLEMENT_LIMIT_REACHED`.
+Join, turns, leave, report and cancel are never blocked by it; this cap is not in `limits`.
 The independent BSON/Jackson envelope permits at most14,648KiB decoded state
 (19,999,404 Base64 characters). Match responses use the shared lossless grammar
 without the obsolete512KiB feature frame. `getMatches()` returns projected summaries
