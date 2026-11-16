@@ -6,9 +6,12 @@ signal matches_changed(kind: String, data: Dictionary)
 signal matches_failed(error: String, code: String)
 signal _request_finished()
 const ENDPOINT := "/api/v1/app/matches"
+## Lobby and turn actions that go over the realtime socket while it is ready (socket v2). Create, result and ranked runs stay HTTP.
+const SOCKET_ACTIONS := ["join", "decline", "start", "turn", "timeout", "leave", "cancel"]
 var _http: HorizonHttpClient
 var _auth: HorizonAuth
 var _validated: HorizonValidatedActions
+var _realtime: HorizonRealtime
 var _scope: Dictionary = {}
 var _cache: Dictionary = {}
 var _versions: Dictionary = {}
@@ -27,7 +30,9 @@ func initialize(http: HorizonHttpClient, auth: HorizonAuth, validated: HorizonVa
 	_auth.signout_completed.connect(_reset)
 	_auth.signin_completed.connect(_playerChanged)
 	_auth.signup_completed.connect(_playerChanged)
+	_realtime = realtime
 	if realtime != null:
+		realtime.snapshot_received.connect(_realtimeSnapshot)
 		realtime.event_received.connect(_realtimeEvent)
 		realtime.resync_required.connect(_realtimeResync)
 		realtime.connection_error.connect(_realtimeError)
@@ -126,8 +131,15 @@ func _call(user: String, kind: String, id: String = "", expected: Variant = null
 		"get": endpoint += "/" + id
 		"mine", "create": pass
 		_: endpoint += "/" + id + "/" + kind
-	var response: HorizonNetworkResponse
-	if mutation:
+	var response: HorizonNetworkResponse = null
+	if mutation and kind in SOCKET_ACTIONS and _realtime != null:
+		# `input` is the HTTP body without userId. Null (not sent or unknown outcome) retries over HTTP with the same
+		# revision: a 409 there means the socket send landed, and the cleared cache makes the next get reload.
+		response = await _realtime.sendFrame({"type": "match.action", "matchId": id, "action": kind, "revision": expected, "input": options})
+		_syncScope()
+		if response == null and scope != _scope: response = HorizonNetworkResponse.failure("Request context changed", 0, HorizonErrorCodes.ErrorCode.NETWORK_ERROR)
+	if response != null: pass
+	elif mutation:
 		var body: Dictionary = options.duplicate(true)
 		body.userId = user
 		var headers := PackedStringArray(["If-Match: " + str(expected)]) if expected != null else PackedStringArray()
@@ -238,6 +250,25 @@ func _syncScope() -> void:
 func _hasSession() -> bool:
 	var user: HorizonUserData = _auth.getCurrentUser()
 	return user != null and _auth.isSignedIn() and not _http.sessionToken.is_empty() and user.accessToken == _http.sessionToken
+## The subscribed snapshot of `matches:<id>` is the match get response: applied like one, no HTTP reload.
+func _realtimeSnapshot(topic: String, raw: String) -> void:
+	if not topic.begins_with("matches:"): return
+	var id: String = topic.trim_prefix("matches:").to_lower()
+	_syncScope()
+	if not _hasSession() or not HorizonMatchModels.uuid(id): return
+	var scope: Dictionary = _scope.duplicate()
+	var user: String = str(scope.user).to_lower()
+	var key: String = _resource("get", id, {})
+	var data: Dictionary = HorizonMatchModels.response(HorizonMatchModels.parse(raw), "get", user, id)
+	if data.is_empty() or not _fresh("get", id, data, key, ""):
+		_realtime.resync_required.emit(topic)
+		return
+	_record("get", id, data, key, "")
+	_cache[HorizonMatchModels.encode([scope, "get", id, null, {}]).sha256_text()] = data.duplicate(true)
+	_refresh[key] = {"millis": int(_nowMillis.call()), "seconds": data.pollAfterSeconds}
+	_trim(_cache, 8)
+	_trim(_refresh, 512)
+	matches_loaded.emit("get", data.duplicate(true))
 func _realtimeEvent(event: Dictionary) -> void: _realtimeResync(str(event.get("topic", "")))
 func _realtimeResync(topic: String) -> void:
 	if topic.is_empty() or topic.begins_with("matches:"): clearCache()

@@ -27,6 +27,7 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by [ProjectMakers](https
 | 🧑 **Player Profile** | Avatar, frame and badges per player, shown on leaderboards |
 | 📈 **Statistics** | One session batch for sum/max/min/last counters with optional UTC daily/weekly resets |
 | 📬 **Inbox** | Bounded personal/project notifications, read/remove and atomic Player Values claims |
+| 🎀 **Item Gifts** | Send one item privately through the Inbox, decline, safe return after decline or expiry |
 | 👥 **Friends** | Exact public lookup, explicit request actions and private own-player relationships |
 | 🛡️ **Groups** | Explicit guild/team membership, roles, private data and bounded member pages |
 | ✅ **Validated Actions** | Server-checked runs: single-use tickets, server seed, rule checks before a score is written |
@@ -485,6 +486,12 @@ in the Dashboard/MCP, outside the app SDK. See `examples/features/inbox_example.
 (`listingId`, `instanceId`, `itemKey`). Claim `items` contains authoritative references,
 not full item instances; explicitly refresh the inventory after a return. Unsupported
 reward fields, malformed IDs and unsafe numbers reject the response before cache updates.
+
+Item gift entries (`item_gift`, `item_gift_return`) carry `attachment.itemGift`
+(`giftId`, `instanceId`, `itemKey`, `direction` `offer` or `return`). `canClaim` includes
+them and `getSource` returns `ITEM_GIFT_OFFER` with `giftId`/`senderId` or `ITEM_GIFT_RETURN`
+with `giftId`/`recipientId`/`reason`. Accepting an offer and taking back a return are both
+`claim(user_id, entry_id)`. See the Item Gifts section below.
 
 The Player Values purchase example stores pending intents by **project key + player**.
 Configured legacy regional-host files migrate with the original ID/payload; conflicting IDs
@@ -1551,6 +1558,58 @@ The complete native transport gate includes all ten real HTTP routes, more than
 2,048 retained open listings after quota lowering, original bytes on retry,
 known-result restart and original escrow claim/discard/replay. Its artificial
 loopback fixture is not evidence of a hosted deployment or an exported Web game.
+
+## Item Gifts: private sends through the Inbox
+
+`Horizon.itemGifts` provides the six App routes under `/api/v1/app/item-gifts`:
+`getConfig`, `getState`, `sendGift`, `getOperation`, `getGift` and `declineGift`;
+`submitIntent(body)` resends the same prepared seven-field tuple. Calls require the
+current player Bearer and project key and return `{success,data,errorCode,error}`.
+There is no implicit polling, write retry or local gift history.
+
+| Method | Result |
+|---|---|
+| `getConfig(user)` | `{config:{revision,enabled,currencyKey,fee},limits,serverTime}` |
+| `getState(user)` | `{state:{userId,revision,sent,history,received,operationWindow,limits},serverTime}` |
+| `sendGift(user,operationId,issuedAt,recipientId,instanceId,inventoryRevision,configRevision)` | one POST, `{receipt,gift,replayed,serverTime}` |
+| `submitIntent(body)` | the same POST with the saved original body |
+| `getOperation(user,operationId)` | `{receipt,serverTime}` or `OPERATION_NOT_FOUND` |
+| `getGift(user,giftId)` | `{gift,serverTime}` for sender, recipient or return owner |
+| `declineGift(user,giftId,giftRevision)` | recipient only, `{gift,replayed,returnDelivery,serverTime}` |
+| `getCurrent(kind)`, `clearCache()` | defensive copy of `config`, `state` or `gift` |
+| `getServerNow()`, `getLastErrorCode()` | server clock estimate and last error code |
+
+Signals are `item_gifts_loaded(kind,data)`, `item_gifts_failed(error,code)` and
+`gift_state_invalidated()`. Gift views hold `itemReference` only. A free gift has
+`currencyKey` null and `fee` 0. The receipt is the fee proof and must match the
+original operation, recipient, instance and config revision. Fees stay exact up to
+9,007,199,254,740,991. Lowering a configured limit never truncates retained gifts.
+
+Claiming is not a gift route. The recipient accepts an offer and the sender takes
+back a declined or expired return with `Horizon.inbox.claim(user, entryId)` on the
+original entry. Afterwards read Inventory and Player Values; never build an item from
+the attachment. Resolve a public friend code with `Horizon.friends` first and show
+the returned profile before the player confirms a send.
+
+Add `examples/features/item_gifts_example.gd` to the gift screen and set its real
+stable `project_id`. Read config and inventory, call `review_send(recipientId,
+instanceId)` and show item, recipient and fee before the explicit confirmation calls
+`confirm_reviewed_send`. The recipient reads a gift and confirms `review_decline` and
+`confirm_reviewed_decline`, or claims with `claim_gift_entry`.
+`item_gifts_quickstart.gd` shows one gift read, a confirmed send and a confirmed
+decline through this sample.
+
+The sample stores the complete original send (all seven fields) per project/player
+before the single POST, using the same lease and storage as the Marketplace sample.
+A sign-out, player switch, host or project change while the POST is in flight
+makes its reply stale, and the original stays with the player who created it. Known
+success is saved before the current Inventory, Player Values and Item Gifts GETs.
+Only when all succeed is the original removed. After a timeout, restart or
+`STATE_CONFLICT` choose `retry_pending` (same bytes) or the read-only
+`recover_original_operation`. A 404 or `OPERATION_EXPIRED` never authorizes a new
+operation ID or revision for the same intent. The native transport gate covers all
+six routes, the uncertain send, recovery, the identity switch, decline replay and both
+Inbox claims against a loopback fixture, not a hosted deployment.
 
 The Groups example's `load_member_page(groupId, afterUserId)` derives its default
 size from the current authenticated `getCurrentGroups().limits.memberPageSize`.
