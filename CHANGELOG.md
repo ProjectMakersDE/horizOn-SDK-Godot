@@ -1,3 +1,11 @@
+# [1.12.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.11.1...v1.12.0) (2026-11-16)
+
+
+### Features
+
+* **item-gifts:** add item gifts manager, inbox attachment, durable send sample and tests (TASK-1140) ([2880819](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/2880819a6bb7337611b2f848f7eb13caa32b2b80))
+* **realtime:** send chat and match actions over socket v2 (TASK-1139) ([249feaf](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/249feafa5e4cf1f65fb925f18b271d3cf612b0b8))
+
 ## [1.11.1](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.11.0...v1.11.1) (2026-11-15)
 
 
