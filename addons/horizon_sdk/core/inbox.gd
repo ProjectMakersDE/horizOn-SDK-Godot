@@ -9,7 +9,7 @@ signal inbox_failed(error: String, code: String)
 signal _request_finished()
 
 const ENDPOINT := "/api/v1/app/inbox"
-enum SourceKind { UNKNOWN, FRIEND_REQUEST, FRIEND_ACCEPTED, GROUP_INVITATION, GROUP_REQUEST, GROUP_INVITATION_ACCEPTED, GROUP_REQUEST_ACCEPTED, MATCH_TURN, MARKET_RETURN }
+enum SourceKind { UNKNOWN, FRIEND_REQUEST, FRIEND_ACCEPTED, GROUP_INVITATION, GROUP_REQUEST, GROUP_INVITATION_ACCEPTED, GROUP_REQUEST_ACCEPTED, MATCH_TURN, MARKET_RETURN, ITEM_GIFT_OFFER, ITEM_GIFT_RETURN }
 var _http: HorizonHttpClient
 var _auth: HorizonAuth
 var _values: HorizonPlayerValues
@@ -182,7 +182,7 @@ func _normalize(raw: Variant, user_id: String, sent_cursor: String) -> Dictionar
 				if not entry.attachment is Dictionary:
 					return {}
 				for field: Variant in entry.attachment:
-					if field not in ["values", "itemReturn"]:
+					if field not in ["values", "itemReturn", "itemGift"]:
 						return {}
 				var amounts: Variant = entry.attachment.get("values", [])
 				if not amounts is Array or amounts.size() > 8:
@@ -196,6 +196,9 @@ func _normalize(raw: Variant, user_id: String, sent_cursor: String) -> Dictionar
 					amount.amount = int(amount.amount)
 				var item: Variant = entry.attachment.get("itemReturn")
 				if item != null and (not item is Dictionary or item.size() != 3 or not _uuid(item.get("listingId")) or not _uuid(item.get("instanceId")) or not _itemKey(item.get("itemKey"))):
+					return {}
+				var gift: Variant = entry.attachment.get("itemGift")
+				if gift != null and (not gift is Dictionary or gift.size() != 4 or not _uuid(gift.get("giftId")) or not _uuid(gift.get("instanceId")) or not _itemKey(gift.get("itemKey")) or not gift.get("direction") in ["offer", "return"]):
 					return {}
 			if _sourceKind(entry) != SourceKind.UNKNOWN and getSource(entry).is_empty():
 				return {}
@@ -229,6 +232,22 @@ static func getSource(entry: Dictionary) -> Dictionary:
 		var attachment: Variant = entry.get("attachment")
 		if not attachment is Dictionary or not attachment.get("itemReturn") is Dictionary or not _uuid(attachment.itemReturn.get("listingId")) or String(attachment.itemReturn.listingId).to_lower() != result.sourceId:
 			return {}
+	elif kind in [SourceKind.ITEM_GIFT_OFFER, SourceKind.ITEM_GIFT_RETURN]:
+		# The gift ID is the source. Claim the entry itself; Horizon.itemGifts reads and declines.
+		var attachment: Variant = entry.get("attachment")
+		var offer: bool = kind == SourceKind.ITEM_GIFT_OFFER
+		if not attachment is Dictionary or not attachment.get("itemGift") is Dictionary or not _uuid(attachment.itemGift.get("giftId")) or String(attachment.itemGift.giftId).to_lower() != result.sourceId or attachment.itemGift.get("direction") != ("offer" if offer else "return"):
+			return {}
+		result.giftId = result.sourceId
+		if offer:
+			if not _uuid(parameters.get("senderId")):
+				return {}
+			result.senderId = String(parameters.senderId).to_lower()
+		else:
+			if not _uuid(parameters.get("recipientId")) or not parameters.get("reason") in ["declined", "expired"]:
+				return {}
+			result.recipientId = String(parameters.recipientId).to_lower()
+			result.reason = parameters.reason
 	return result
 
 static func _sourceKind(entry: Dictionary) -> SourceKind:
@@ -243,6 +262,8 @@ static func _sourceKind(entry: Dictionary) -> SourceKind:
 		"group_accept-request:horizon.groups.accept-request": return SourceKind.GROUP_REQUEST_ACCEPTED
 		"match_turn:horizon.matches.your_turn": return SourceKind.MATCH_TURN
 		"marketplace:marketplace.item_return": return SourceKind.MARKET_RETURN
+		"item_gift:horizon.item_gifts.offer": return SourceKind.ITEM_GIFT_OFFER
+		"item_gift_return:horizon.item_gifts.return": return SourceKind.ITEM_GIFT_RETURN
 	return SourceKind.UNKNOWN
 
 static func isFreeText(entry: Dictionary) -> bool:
@@ -254,7 +275,7 @@ static func getFreeText(entry: Dictionary) -> String:
 
 static func canClaim(entry: Dictionary) -> bool:
 	var attachment: Variant = entry.get("attachment")
-	return typeof(entry.get("claimed")) == TYPE_BOOL and not entry.claimed and attachment is Dictionary and ((attachment.get("values") is Array and not attachment.values.is_empty()) or attachment.get("itemReturn") is Dictionary)
+	return typeof(entry.get("claimed")) == TYPE_BOOL and not entry.claimed and attachment is Dictionary and ((attachment.get("values") is Array and not attachment.values.is_empty()) or attachment.get("itemReturn") is Dictionary or attachment.get("itemGift") is Dictionary)
 
 static func _validItems(value: Variant) -> bool:
 	if not value is Array or value.size() > 4:
