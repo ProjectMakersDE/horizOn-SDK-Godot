@@ -15,6 +15,9 @@ var _scope: Dictionary = {}
 var _watches: Dictionary = {}
 var _cache: Dictionary = {}
 var _floors: Dictionary = {}
+# Last hidden view per watched channel and the view a resubscription told the gateway it knows.
+var _stale: Dictionary = {}
+var _basis: Dictionary = {}
 var _serial: int = 0
 var _clearing: bool = false
 var _history: HorizonChatHistory
@@ -34,6 +37,8 @@ func initialize(http: HorizonHttpClient, auth: HorizonAuth, realtime: HorizonRea
 	_realtime.resync_required.connect(_resync)
 	_realtime.connection_error.connect(_disconnected)
 	_realtime.subscription_failed.connect(_subscriptionDenied)
+	_realtime.snapshot_received.connect(_snapshot)
+	_realtime.setSyncProvider("chat:", _subscribeSync)
 func getLimits(user_id: String) -> Dictionary: return await _request(user_id, "limits")
 func openChannel(user_id: String, kind: String, peer_id: String = "", group_id: String = "") -> Dictionary:
 	var options: Dictionary = {"kind": kind}
@@ -88,10 +93,14 @@ func _stop(channel_id: String) -> void:
 	_realtime.unsubscribe("chat:" + channel_id)
 	_hide(channel_id)
 	_floors.erase(channel_id)
+	_stale.erase(channel_id)
+	_basis.erase(channel_id)
 func clearCache() -> void:
 	if _clearing: return
 	_clearing = true
 	for id: String in _watches.keys(): _stop(id)
+	_stale.clear()
+	_basis.clear()
 	_scope.clear()
 	_serverMillis = -1
 	_clockMillis = -1
@@ -215,8 +224,14 @@ func _request(user: String, kind: String, id: String = "", options: Dictionary =
 		"report":
 			path += "/channels/" + id + "/messages/" + options.messageId + "/report"
 			payload.erase("messageId")
-	var response: HorizonNetworkResponse
-	if kind in ["limits", "operation"]: response = await _http.getAsync(path, true)
+	var response: HorizonNetworkResponse = null
+	if kind == "send":
+		# Socket v2: over the socket while it is ready. Null (not sent or unknown outcome) retries over HTTP with the same operation.
+		response = await _realtime.sendFrame({"type": "chat.send", "channelId": id, "operationId": options.operationId, "issuedAt": options.issuedAt, "text": options.text})
+		_syncScope()
+		if scope != _scope: return _fail("STALE_RESPONSE")
+	if response != null: pass
+	elif kind in ["limits", "operation"]: response = await _http.getAsync(path, true)
 	else:
 		payload.userId = user
 		var raw: String = HorizonSharedObjectModels.encode(payload)
@@ -281,6 +296,38 @@ func _resync(topic: String) -> void:
 	if not _watches.has(id): return
 	_hide(id)
 	if _available(id): _queue(id)
+## Resubscription catch up: epoch and up to 20 newest known ids, so the snapshot carries only what was missed.
+func _subscribeSync(topic: String) -> Dictionary:
+	var id: String = topic.trim_prefix("chat:")
+	var basis: Dictionary = _cache.get(id, _stale.get(id, {})).duplicate(true)
+	_basis[id] = basis
+	if basis.is_empty(): return {"epoch": null, "knownMessageIds": []}
+	return {"epoch": basis.channel.epoch, "knownMessageIds": basis.visibleMessageIds.slice(-20)}
+## The subscribed snapshot is the sync answer to the basis sent with the subscription. Applied without an HTTP reload.
+func _snapshot(topic: String, raw: String) -> void:
+	if not topic.begins_with("chat:"): return
+	var id: String = topic.trim_prefix("chat:")
+	_syncScope()
+	var basis: Dictionary = _basis.get(id, {})
+	_basis.erase(id)
+	if not _available(id) or not _authorized(_watches[id].user): return
+	var watch: Dictionary = _watches[id]
+	if watch.syncing: _queue(id); return
+	var options: Dictionary = {"epoch": basis.channel.epoch if not basis.is_empty() else null, "knownMessageIds": basis.visibleMessageIds.slice(-20) if not basis.is_empty() else []}
+	var data: Dictionary = HorizonChatModels.envelope(raw, "sync", watch.user, id, options)
+	var complete: Dictionary = {} if data.is_empty() or HorizonChatModels.millis(data.serverTime) < _serverMillis else _merge(id, data, basis)
+	if complete.is_empty(): _hide(id); _queue(id); return
+	var server: int = HorizonChatModels.millis(data.serverTime)
+	_clockMillis = maxi(server, _effectiveMillis())
+	_clockTicks = int(_nowMillis.call())
+	_serverMillis = server
+	var binding: Dictionary = _historyBinding(id)
+	_cache[id] = complete
+	_stale.erase(id)
+	watch.dirty = false
+	_record(id, complete)
+	_archive(id, complete.messages, binding)
+	if _available(id) and _watches[id].serial == watch.serial: channel_changed.emit(id, complete.duplicate(true))
 func _disconnected(_code: String) -> void:
 	if _code == "SUBSCRIPTION_FORBIDDEN" and _realtime.isReady: return
 	for id: String in _watches.keys(): _hide(id)
@@ -289,6 +336,7 @@ func _subscriptionDenied(topic: String, _code: String) -> void:
 func _watchBinding(id: String) -> Dictionary:
 	return {"serial": _watches[id].serial, "authorization": _watches[id].authorization} if _watches.has(id) else {}
 func _hide(id: String) -> void:
+	if _watches.has(id) and _cache.has(id): _stale[id] = _cache[id]
 	_cache.erase(id)
 	if _watches.has(id): _watches[id].authorization += 1
 	channel_hidden.emit(id)

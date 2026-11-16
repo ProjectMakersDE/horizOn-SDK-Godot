@@ -146,6 +146,8 @@ run_contract tests/mock_configured_limits_server.py tests/configured_limits_tran
 "$GODOT_BIN" --headless --path . --script tests/items_example_test.gd
 
 "$GODOT_BIN" --headless --path . --script tests/realtime_policy_test.gd
+"$GODOT_BIN" --headless --path . --check-only --script tests/realtime_socket_v2_test.gd
+"$GODOT_BIN" --headless --path . --script tests/realtime_socket_v2_test.gd
 if [ -n "${HORIZON_REALTIME_FIXTURE_URL:-}" ]; then
     "$GODOT_BIN" --headless --path . --script tests/realtime_transport_test.gd
 fi
