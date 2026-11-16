@@ -12,6 +12,7 @@ Official Godot SDK for **horizOn** Backend-as-a-Service by ProjectMakers.
 - **News**: In-game news and announcements
 - **Gift Codes**: Validate and redeem promotional codes, unlock cosmetics
 - **Player Profile**: Avatar, frame and badges per player, shown on leaderboards
+- **Item Gifts**: Send one item privately through the Inbox, decline, safe return after decline or expiry
 - **Groups**: Explicit membership, roles, private group data and bounded member pages
 - **Validated Actions**: Server-checked runs: single-use tickets, server seed, rule checks before a score is written
 - **Feedback**: Submit bug reports and feature requests
@@ -671,6 +672,16 @@ read and reconcile uncertainty explicitly. Player Values offers/receipts add
 before HTTP and fetch inventory explicitly after success. The executable
 `examples/features/items_example.gd` and the repository README describe durable
 recovery, strict integer/canonical property limits and lossless NUL-string values.
+
+### Item Gifts
+
+`Horizon.itemGifts` exposes `getConfig`, `getState`, `sendGift`, `submitIntent`,
+`getOperation`, `getGift` and `declineGift`. A send is one POST: persist all seven
+fields before it and resend the same body after uncertainty, or read it back with
+`getOperation`. Offers and returns are claimed with `Horizon.inbox.claim` on the
+original entry, whose `attachment.itemGift` names `giftId`, `instanceId`, `itemKey`
+and `direction`. `examples/features/item_gifts_example.gd` and the repository README
+describe the durable send, the identity-switch fence and the decline flow.
 
 Only NUL-containing Groups `name`/`description` values use the existing `HorizonItemStringData` carrier; ordinary strings and the typed `updateGroup(...,name:String,description:String,...)` signature stay unchanged. Display with `getDisplayPreview()`; never roundtrip that preview. `GroupView.nameJson`/`descriptionJson` retain the complete original JSON string tokens. Persist those token strings, the reviewed revision and original data JSON, then explicitly call `updateGroupOriginalMetadata(user,group,revision,nameJson,descriptionJson,mode,data)` for a lossless metadata edit/retry. The typed String API rejects a carrier instead of silently writing a replacement character. The helper sends one attempt and never changes the saved revision or tokens. Groups tokenizes complete received strings without PCRE's fixed match budget; metadata writes strictly escape control characters.
 

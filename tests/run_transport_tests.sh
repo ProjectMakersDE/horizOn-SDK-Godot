@@ -34,8 +34,9 @@ cd "$test_dir"
 "$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/matches_example.gd
 "$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/chat_example.gd
 "$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/chat_demo.gd
+"$GODOT_BIN" --headless --path . --check-only --script addons/horizon_sdk/examples/features/item_gifts_example.gd
 # Godot can exit0 after a script parse error; validate the new native gates before execution.
-for items_test in tests/groups_metadata_transport_test.gd tests/group_sample_pages_transport_test.gd tests/configured_limits_policy_test.gd tests/configured_limits_transport_test.gd tests/marketplace_policy_test.gd tests/marketplace_transport_test.gd tests/inbox_transport_test.gd tests/inbox_policy_test.gd tests/pending_inbox_claim_test.gd tests/gift_values_transport_test.gd tests/gift_code_transport_test.gd tests/pending_gift_code_test.gd tests/items_transport_test.gd tests/items_policy_test.gd tests/items_example_test.gd tests/shared_objects_transport_test.gd tests/shared_objects_policy_test.gd tests/matches_transport_test.gd tests/matches_policy_test.gd tests/matches_example_test.gd tests/chat_transport_test.gd tests/chat_policy_test.gd tests/chat_snapshot_transport_test.gd; do
+for items_test in tests/groups_metadata_transport_test.gd tests/group_sample_pages_transport_test.gd tests/configured_limits_policy_test.gd tests/configured_limits_transport_test.gd tests/marketplace_policy_test.gd tests/marketplace_transport_test.gd tests/item_gifts_policy_test.gd tests/item_gifts_transport_test.gd tests/inbox_transport_test.gd tests/inbox_policy_test.gd tests/pending_inbox_claim_test.gd tests/gift_values_transport_test.gd tests/gift_code_transport_test.gd tests/pending_gift_code_test.gd tests/items_transport_test.gd tests/items_policy_test.gd tests/items_example_test.gd tests/shared_objects_transport_test.gd tests/shared_objects_policy_test.gd tests/matches_transport_test.gd tests/matches_policy_test.gd tests/matches_example_test.gd tests/chat_transport_test.gd tests/chat_policy_test.gd tests/chat_snapshot_transport_test.gd; do
     "$GODOT_BIN" --headless --path . --check-only --script "$items_test"
 done
 "$GODOT_BIN" --headless --path . --script tests/pending_purchase_test.gd
@@ -122,6 +123,7 @@ run_contract tests/mock_groups_server.py tests/groups_transport_test.gd
 run_contract tests/mock_groups_metadata_server.py tests/groups_metadata_transport_test.gd
 run_contract tests/mock_items_server.py tests/items_transport_test.gd
 run_contract tests/mock_marketplace_server.py tests/marketplace_transport_test.gd
+run_contract tests/mock_item_gifts_server.py tests/item_gifts_transport_test.gd
 run_contract tests/mock_shared_objects_server.py tests/shared_objects_transport_test.gd
 run_contract tests/mock_matches_server.py tests/matches_transport_test.gd
 run_contract tests/mock_chat_server.py tests/chat_transport_test.gd
@@ -140,6 +142,7 @@ run_contract tests/mock_configured_limits_server.py tests/configured_limits_tran
 "$GODOT_BIN" --headless --path . --script tests/chat_history_test.gd
 "$GODOT_BIN" --headless --path . --script tests/items_policy_test.gd
 "$GODOT_BIN" --headless --path . --script tests/marketplace_policy_test.gd
+"$GODOT_BIN" --headless --path . --script tests/item_gifts_policy_test.gd
 "$GODOT_BIN" --headless --path . --script tests/items_example_test.gd
 
 "$GODOT_BIN" --headless --path . --script tests/realtime_policy_test.gd

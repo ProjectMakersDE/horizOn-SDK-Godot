@@ -24,6 +24,7 @@ feature's signals and return values.
 | Statistics | `statistics_example.gd` (configure kills/sum and best_score/max first) |
 | Inbox | `inbox_example.gd` (explicit refresh/claim; persists the authorized original entry ID) |
 | Items | `items_example.gd` (explicit item offer/purchase, inventory, equip/adjust/discard) |
+| Item Gifts | `item_gifts_example.gd` (set `project_id`; reviewed send persists the original intent, decline, Inbox claim) |
 | Achievements | `achievements_example.gd` (progress, atomic permanent-key unlock, legacy reward-status helpers) |
 | Validated Actions | `validated_actions_example.gd` |
 | Validated Actions: server-owned player state | `validated_state_example.gd` |
