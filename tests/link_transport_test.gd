@@ -39,6 +39,8 @@ func _run() -> void:
 		_fail("Apple link must update the auth type")
 		return
 	print("Godot link: guest account linked with the same user ID")
+	# The cached session would leak into the next contract test of this project.
+	auth.signOut(false)
 	auth.clearAnonymousToken()
 	http.queue_free()
 	quit(0)
