@@ -45,6 +45,18 @@ func setEquipped(user_id: String, instance_id: String, expected_revision: Varian
 	return await _mutate(user_id, instance_id, expected_revision, "/equip", {"equipped": equipped})
 func discardItem(user_id: String, instance_id: String, expected_revision: Variant) -> Dictionary:
 	return await _mutate(user_id, instance_id, expected_revision, "/discard", {})
+## Stack templates: one stack per item key, addressed by key instead of an instance.
+func setStackEquipped(user_id: String, item_key: String, expected_revision: Variant, equipped: Variant) -> Dictionary:
+	if not equipped is bool: return _fail("INVALID_REQUEST")
+	return await _mutateStack(user_id, item_key, expected_revision, "/equip", {"equipped": equipped})
+func discardStack(user_id: String, item_key: String, expected_revision: Variant, count: Variant = 1) -> Dictionary:
+	if not HorizonItemModels.integer(count, 1) or count > HorizonItemModels.MAX_STACK: return _fail("INVALID_REQUEST")
+	return await _mutateStack(user_id, item_key, expected_revision, "/discard", {"count": count})
+func _mutateStack(user: String, item_key: String, revision: Variant, route: String, body: Dictionary) -> Dictionary:
+	if not HorizonItemModels.key(item_key) or not HorizonItemModels.integer(revision): return _fail("INVALID_REQUEST")
+	body.itemKey = item_key
+	body.expectedRevision = revision
+	return await _call(user, route, body)
 func _mutate(user: String, instance: String, revision: Variant, route: String, body: Dictionary) -> Dictionary:
 	if not HorizonItemModels.uuid(instance) or not HorizonItemModels.integer(revision): return _fail("INVALID_REQUEST")
 	body.instanceId = instance
@@ -121,6 +133,12 @@ func _call(user: String, route: String, payload: Dictionary = {}) -> Dictionary:
 
 func _effect(snapshot: Dictionary, route: String, body: Dictionary) -> bool:
 	if snapshot.revision != body.expectedRevision + 1: return false
+	if body.has("itemKey"):
+		var stack: Dictionary = {}
+		for entry: Dictionary in snapshot.stacks:
+			if entry.itemKey == body.itemKey: stack = entry
+		if route == "/discard": return true
+		return not stack.is_empty() and stack.equipped == body.equipped
 	var target: Dictionary = {}
 	for item: Dictionary in snapshot.instances:
 		if item.instanceId.to_lower() == body.instanceId.to_lower(): target = item
