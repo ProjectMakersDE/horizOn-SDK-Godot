@@ -1,3 +1,15 @@
+# [1.13.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.12.0...v1.13.0) (2026-11-23)
+
+
+### Bug Fixes
+
+* **branding:** new horizOn plugin icon and logo (TASK-1146) ([2eaccb0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/2eaccb0455f90e0646758319a854f8586bd2adec))
+
+
+### Features
+
+* **auth:** link a guest account to email, Google or Apple ([7ee3ce2](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/7ee3ce2018792176f656d68aa0d40fc19fe3af80))
+
 # [1.12.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.11.1...v1.12.0) (2026-11-16)
 
 
