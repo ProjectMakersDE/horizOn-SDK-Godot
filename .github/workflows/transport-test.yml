@@ -8,7 +8,7 @@ on:
 
 jobs:
   transport-test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, proxmox-ci, horizon-sdk-ci]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
