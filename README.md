@@ -144,6 +144,12 @@ await Horizon.auth.signInEmail("user@example.com", "password")
 await Horizon.auth.signUpAnonymous("DisplayName")
 await Horizon.auth.restoreAnonymousSession()
 
+# Switch a signed-in guest account to email, Google or Apple, keeping the same user ID.
+# Email needs verifyEmail() afterwards; Google and Apple are verified at once.
+await Horizon.auth.linkEmail("user@example.com", "password")
+await Horizon.auth.linkGoogle(google_code, google_redirect_uri)
+await Horizon.auth.linkApple(identity_token)
+
 # Apple Sign-In - low-level (game already has the identity token)
 await Horizon.auth.signUpApple(identity_token, "Jane", "Doe")
 await Horizon.auth.signInApple(identity_token)
