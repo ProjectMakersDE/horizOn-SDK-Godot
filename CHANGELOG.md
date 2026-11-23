@@ -1,3 +1,10 @@
+## [1.13.1](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.13.0...v1.13.1) (2026-11-23)
+
+
+### Bug Fixes
+
+* run SDK CI on the local proxmox runners and test Unity only on release ([9a024ae](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/9a024ae568d9691c020c8d195913486b3f97bb85))
+
 # [1.13.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.12.0...v1.13.0) (2026-11-23)
 
 
