@@ -12,6 +12,8 @@ signal signup_completed(user: HorizonUserData)
 signal signup_failed(error: String)
 signal signin_completed(user: HorizonUserData)
 signal signin_failed(error: String)
+signal link_completed(user: HorizonUserData)
+signal link_failed(error: String)
 signal signout_completed()
 signal auth_check_completed(is_valid: bool)
 signal email_verified()
@@ -41,6 +43,7 @@ const APPLE_SIGN_IN_SINGLETON := "HorizonAppleSignIn"
 ## Endpoints
 const ENDPOINT_SIGNUP := "/api/v1/app/user-management/signup"
 const ENDPOINT_SIGNIN := "/api/v1/app/user-management/signin"
+const ENDPOINT_LINK := "/api/v1/app/user-management/link"
 
 ## Cache keys for persistent storage
 const CACHE_KEY_USER_SESSION := "horizOn_UserSession"
@@ -371,6 +374,104 @@ func _signIn(request: Dictionary) -> bool:
 
 	_logger.error("Signin failed: %s" % errorMsg)
 	signin_failed.emit(errorMsg)
+	return false
+
+
+# ===== LINK GUEST ACCOUNT =====
+
+## Link the signed-in guest (anonymous) account to an email and password.
+## The user ID stays the same. The server sends a verification mail, so
+## isEmailVerified is false until verifyEmail() succeeds.
+## @param email User's email address
+## @param password User's password (4-32 characters)
+## @param preferred_language Optional language for the verification mail
+## @return True if the account was linked
+func linkEmail(email: String, password: String, preferred_language: String = "") -> bool:
+	if email.is_empty() or password.is_empty():
+		_logger.error("Email and password are required")
+		link_failed.emit("Email and password are required")
+		return false
+
+	var request := {
+		"type": "EMAIL",
+		"email": email,
+		"password": password
+	}
+
+	if not preferred_language.is_empty():
+		request["preferredLanguage"] = preferred_language
+
+	return await _link(request)
+
+
+## Link the signed-in guest (anonymous) account to a Google account.
+## @param google_authorization_code Google OAuth authorization code
+## @param google_redirect_uri The redirect URI used for OAuth (must match the one used to obtain the code)
+## @return True if the account was linked
+func linkGoogle(google_authorization_code: String, google_redirect_uri: String) -> bool:
+	if google_authorization_code.is_empty():
+		_logger.error("Google authorization code is required")
+		link_failed.emit("Google authorization code is required")
+		return false
+
+	if google_redirect_uri.is_empty():
+		_logger.error("Google redirect URI is required")
+		link_failed.emit("Google redirect URI is required")
+		return false
+
+	return await _link({
+		"type": "GOOGLE",
+		"googleAuthorizationCode": google_authorization_code,
+		"googleRedirectUri": google_redirect_uri
+	})
+
+
+## Link the signed-in guest (anonymous) account to an Apple account using a pre-obtained identity token.
+## @param identity_token JWT returned by Apple after user consent
+## @return True if the account was linked
+func linkApple(identity_token: String) -> bool:
+	if identity_token.is_empty():
+		_logger.error("Apple identity token is required")
+		link_failed.emit(ERROR_INVALID_APPLE_TOKEN)
+		return false
+
+	return await _link({
+		"type": "APPLE",
+		"appleIdentityToken": identity_token
+	})
+
+
+## Internal link implementation.
+func _link(request: Dictionary) -> bool:
+	if not isSignedIn() or not _currentUser.isAnonymous:
+		_logger.error("A signed-in guest account is required to link")
+		link_failed.emit("A signed-in guest account is required to link")
+		return false
+
+	request["userId"] = _currentUser.userId
+	request["sessionToken"] = _currentUser.accessToken
+
+	var response := await _http.postAsync(ENDPOINT_LINK, request)
+
+	if response.isSuccess and response.data is Dictionary \
+			and not _stringOf(response.data.get("userId")).is_empty():
+		var data: Dictionary = response.data.duplicate()
+		data["isAnonymous"] = false
+		_updateCurrentUser(data)
+		# The server deleted the guest token, so the stored one is dead.
+		_currentUser.anonymousToken = ""
+		clearAnonymousToken()
+		_cacheSession()
+		_logger.info("Guest account linked: %s" % data.get("userId"))
+		link_completed.emit(_currentUser)
+		return true
+
+	var errorMsg := response.error
+	if errorMsg.is_empty() and response.data is Dictionary:
+		errorMsg = response.data.get("error", response.data.get("message", "Link failed"))
+
+	_logger.error("Link failed: %s" % errorMsg)
+	link_failed.emit(errorMsg)
 	return false
 
 
