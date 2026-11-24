@@ -1,3 +1,10 @@
+# [1.14.0](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.13.1...v1.14.0) (2026-11-24)
+
+
+### Features
+
+* **items:** stack inventory, equip and discard (TASK-1152) ([9cee2d1](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/commit/9cee2d1ce9148ef348d535e73ab919b8c332de8b))
+
 ## [1.13.1](https://github.com/ProjectMakersDE/horizOn-SDK-Godot/compare/v1.13.0...v1.13.1) (2026-11-23)
 
 
