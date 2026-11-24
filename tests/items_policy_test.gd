@@ -188,7 +188,49 @@ func _run() -> void:
 	values.item_inventory_invalidated.connect(change)
 	assert((await values.purchase(USER, "sword", "1792152000000:00000000-0000-4000-8000-000000004012")).errorCode == "STALE_RESPONSE" and http.calls.size() == before, "Invalidation callback ABA cannot retarget a purchase")
 	values.item_inventory_invalidated.disconnect(change)
-	assert(HorizonItemModels.limits({"catalog":2147483647,"inventory":2147483647,"receipts":2147483647}).size() == 3)
+	assert(HorizonItemModels.limits({"catalog":2147483647,"inventory":2147483647,"receipts":2147483647}).size() == 4)
+	# TASK-1152 stacks: additive fields, key-addressed equip/discard, PV stack grants.
+	assert(HorizonItemModels.limits({"catalog":1,"inventory":1,"receipts":1}).stacks == 0 and HorizonItemModels.limits({"catalog":1,"inventory":1,"receipts":1,"stacks":2500}).stacks == 2500)
+	assert(HorizonItemModels.limits({"catalog":1,"inventory":1,"receipts":1,"stacks":-1}).is_empty())
+	var legacy: Dictionary = HorizonItemModels.template(catalog(1, 1).definitions[0])
+	assert(legacy.mode == "unique" and legacy.maxStack == null)
+	var potion: Dictionary = {"key":"potion","name":"Potion","type":"consumable","rarity":"common","active":true,"baseProperties":{"heal":5},"propertyRules":[],"mode":"stack","maxStack":99}
+	assert(HorizonItemModels.template(potion).maxStack == 99)
+	var explicit_unique: Dictionary = catalog(1, 1).definitions[0]
+	explicit_unique.mode = "unique"
+	assert(HorizonItemModels.template(explicit_unique).mode == "unique")
+	for broken: Dictionary in [{"maxStack":null}, {"maxStack":1000000}, {"mode":"heap"}, {"mode":"unique"}]:
+		var invalid_template: Dictionary = potion.duplicate(true)
+		invalid_template.merge(broken, true)
+		assert(HorizonItemModels.template(invalid_template).is_empty())
+	var piles: Dictionary = snapshot(20, 20)
+	piles.stacks = [{"itemKey":"potion","count":3,"equipped":false}]
+	http.responses = [{"data": piles}]
+	assert((await items.getInventory(USER)).data.stacks == [{"itemKey":"potion","count":3,"equipped":false}])
+	for invalid_stack: Variant in [{"itemKey":"potion","count":0,"equipped":false}, {"itemKey":"potion","count":1}, {"itemKey":"Potion","count":1,"equipped":false}]:
+		var bad_piles: Dictionary = snapshot(20, 20)
+		bad_piles.stacks = [invalid_stack]
+		assert(HorizonItemModels.inventory(bad_piles, USER).is_empty())
+	piles = snapshot(21, 21)
+	piles.stacks = [{"itemKey":"potion","count":3,"equipped":true}]
+	http.responses = [{"data": piles}]
+	assert((await items.setStackEquipped(USER, "potion", 20, true)).success and http.calls[-1].once and http.calls[-1].body == {"userId":USER,"itemKey":"potion","expectedRevision":20,"equipped":true})
+	piles = snapshot(22, 22)
+	piles.stacks = [{"itemKey":"potion","count":1,"equipped":true}]
+	http.responses = [{"data": piles}]
+	assert((await items.discardStack(USER, "potion", 21, 2)).data.stacks[0].count == 1 and http.calls[-1].body == {"userId":USER,"itemKey":"potion","expectedRevision":21,"count":2})
+	http.responses = [{"data": snapshot(23, 23)}]
+	assert((await items.discardStack(USER, "potion", 22)).data.stacks.is_empty() and http.calls[-1].body.count == 1)
+	before = http.calls.size()
+	assert((await items.discardStack(USER, "potion", 23, 0)).errorCode == "INVALID_REQUEST" and (await items.discardStack(USER, "potion", 23, 1000000)).errorCode == "INVALID_REQUEST")
+	assert((await items.setStackEquipped(USER, "Potion", 23, true)).errorCode == "INVALID_REQUEST" and http.calls.size() == before)
+	http.responses = [{"failure": 422, "code": "ITEM_STACK_TOO_SMALL"}]
+	assert((await items.discardStack(USER, "potion", 23, 5)).errorCode == "ITEM_STACK_TOO_SMALL")
+	state = value_state()
+	state.operation.stacks = [{"itemKey":"potion","quantity":2,"count":5}]
+	http.responses = [{"data": state}]
+	result = await values.purchase(USER, "potion", "1792152000000:00000000-0000-4000-8000-000000004013")
+	assert(result.success and result.state.operation.stacks == [{"itemKey":"potion","quantity":2,"count":5}], "PV purchase exposes stack grants")
 	for field: String in ["catalog", "inventory", "receipts"]:
 		for invalid: Variant in [0, -1, 2147483648, 1.0, "250"]:
 			var invalid_limits: Dictionary = {"catalog":6000,"inventory":250,"receipts":80}

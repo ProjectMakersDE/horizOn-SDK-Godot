@@ -221,6 +221,9 @@ static func _normalizeState(raw: Variant) -> Dictionary:
 		var items: Variant = HorizonItemModels.references(state.operation.get("items", []))
 		if items == null: return {}
 		state.operation.items = items
+		var stacks: Variant = HorizonItemModels.stackGrants(state.operation.get("stacks"))
+		if stacks == null: return {}
+		state.operation.stacks = stacks
 		for delta: Variant in state.operation.get("applied", []):
 			if not delta is Dictionary or not _safeNumber(delta.get("amount")):
 				return {}

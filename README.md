@@ -1095,7 +1095,7 @@ if inventory.success and not inventory.data.instances.is_empty():
         user_id, selected.instanceId, inventory.data.revision, true)
 ```
 
-The five methods return `{success,data,errorCode,error}`:
+The five instance methods return `{success,data,errorCode,error}`:
 `getInventory(user_id)`, `getCatalog(user_id,after_key="",limit=50,catalog_revision=null)`,
 `adjustProperties(user_id,instance_id,expected_revision,changes)`,
 `setEquipped(user_id,instance_id,expected_revision,equipped)`, and
@@ -1122,6 +1122,18 @@ one own inventory and one catalog page. `getCurrentInventory()` and
 `getCurrentCatalogPage()` return copies; `clearCache()` preserves same-player
 freshness floors. Signals are `inventory_loaded`, `inventory_updated`,
 `catalog_loaded` and `items_failed(error,code)`. Items creates no realtime topic.
+
+Stack templates (`mode: "stack"`) keep one count per player instead of instances.
+Inventory snapshots add `stacks` (`{itemKey,count,equipped}`, empty when the server
+omits it), `limits.stacks` is the number of stack slots (0 when omitted), and catalog
+definitions carry `mode` (`"unique"` by default) and `maxStack` (`null` for unique).
+`setStackEquipped(user_id,item_key,expected_revision,equipped)` and
+`discardStack(user_id,item_key,expected_revision,count=1)` address a stack by its
+key and send once, like the instance methods, which stay unchanged. A Player Values
+purchase adds `operation.stacks` (`{itemKey,quantity,count}`, count is the new total).
+Stack errors arrive as `errorCode`: `STACK_LIMIT_REACHED` (stack full or no free slot),
+`ITEM_STACK_TOO_SMALL` (discard count above the stack), `ITEM_MODE_LOCKED` (mode change)
+and `ITEM_NOT_TRADABLE` (stacks cannot be gifted or sold on the marketplace).
 
 Ordinary property strings remain Godot `String`. Godot itself cannot represent
 U+0000 and would replace it with U+FFFD. Those valid property/name strings instead

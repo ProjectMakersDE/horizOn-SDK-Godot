@@ -5,6 +5,7 @@ const MAX := 9007199254740991
 # Wire field/encoding bounds, independent of configurable product quotas.
 const INT32_MAX := 2147483647
 const TEMPLATE_SLOT_CAPACITY := 65536
+const MAX_STACK := 999999
 static var _key: RegEx = RegEx.create_from_string("^[a-z][a-z0-9_]{0,63}\\z")
 static var _uuid: RegEx = RegEx.create_from_string("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\z")
 # Consume ordinary string runs as one possessive chunk: a legal large opaque
@@ -161,7 +162,32 @@ static func limits(raw: Variant) -> Dictionary:
 	if not raw is Dictionary: return {}
 	for field: String in ["catalog", "inventory", "receipts"]:
 		if not integer(raw.get(field), 1) or raw[field] > INT32_MAX: return {}
-	return {"catalog": raw.catalog, "inventory": raw.inventory, "receipts": raw.receipts}
+	# Stack slots are additive; servers before TASK-1152 omit them.
+	var stacks: Variant = raw.get("stacks", 0)
+	if not integer(stacks) or stacks > INT32_MAX: return {}
+	return {"catalog": raw.catalog, "inventory": raw.inventory, "receipts": raw.receipts, "stacks": stacks}
+
+## Stack rows `{itemKey,count,equipped}`, one per template. Missing means empty.
+static func stacks(raw: Variant) -> Variant:
+	if raw == null: return []
+	if not raw is Array: return null
+	var seen: Dictionary = {}
+	var result: Array = []
+	for entry: Variant in raw:
+		if not entry is Dictionary or not key(entry.get("itemKey")) or seen.has(entry.itemKey) or not integer(entry.get("count"), 1) or not entry.get("equipped") is bool: return null
+		seen[entry.itemKey] = true
+		result.append({"itemKey": entry.itemKey, "count": entry.count, "equipped": entry.equipped})
+	return result
+
+## PV purchase `operation.stacks`: `{itemKey,quantity,count}` with native parsed numbers. Missing means empty.
+static func stackGrants(raw: Variant) -> Variant:
+	if raw == null: return []
+	if not raw is Array or raw.size() > 4: return null
+	var result: Array = []
+	for entry: Variant in raw:
+		if not entry is Dictionary or not key(entry.get("itemKey")) or not HorizonPlayerValues._safeNumber(entry.get("quantity")) or entry.quantity < 1 or entry.quantity > 4 or not HorizonPlayerValues._safeNumber(entry.get("count")) or entry.count < 1: return null
+		result.append({"itemKey": entry.itemKey, "quantity": int(entry.quantity), "count": int(entry.count)})
+	return result
 
 static func references(raw: Variant) -> Variant:
 	if not raw is Array or raw.size() > 4: return null
@@ -190,7 +216,8 @@ static func inventory(raw: Dictionary, user: String) -> Dictionary:
 	if raw.get("userId") != user or not integer(raw.get("revision")) or not time(raw.get("serverTime")): return {}
 	var cap: Dictionary = limits(raw.get("limits"))
 	var instances: Variant = raw.get("instances")
-	if cap.is_empty() or not instances is Array: return {}
+	var piles: Variant = stacks(raw.get("stacks"))
+	if cap.is_empty() or not instances is Array or piles == null: return {}
 	var seen: Dictionary = {}
 	var rows: Array = []
 	for item: Variant in instances:
@@ -199,7 +226,7 @@ static func inventory(raw: Dictionary, user: String) -> Dictionary:
 		if props == null: return {}
 		seen[item.instanceId.to_lower()] = true
 		rows.append({"instanceId": item.instanceId, "itemKey": item.itemKey, "properties": props, "equipped": item.equipped, "createdAt": item.createdAt})
-	return {"userId": user, "revision": raw.revision, "instances": rows, "limits": cap, "serverTime": raw.serverTime}
+	return {"userId": user, "revision": raw.revision, "instances": rows, "stacks": piles, "limits": cap, "serverTime": raw.serverTime}
 
 static func _name(value: Variant) -> bool:
 	if value is HorizonItemStringData: return value.getUtf8ByteCount() <= 120
@@ -217,7 +244,19 @@ static func template(raw: Variant) -> Dictionary:
 		seen[rule.key] = true
 		entries.append({"key": rule.key, "min": rule.min, "max": rule.max, "maxChangePerCall": rule.maxChangePerCall})
 	var result: Dictionary = {"key": raw.key, "name": raw.name, "type": raw.type, "rarity": raw.rarity, "active": raw.active, "baseProperties": props, "propertyRules": entries}
-	return result if canonical(result).to_utf8_buffer().size() <= 2048 else {}
+	# Additive TASK-1152 fields: the server sends mode and maxStack only for stack
+	# templates, so only those count toward the canonical size bound.
+	var mode: Variant = raw.get("mode", "unique")
+	var max_stack: Variant = raw.get("maxStack")
+	if mode == "stack":
+		if not integer(max_stack, 1) or max_stack > MAX_STACK: return {}
+		result.mode = mode
+		result.maxStack = max_stack
+	elif mode != "unique" or max_stack != null: return {}
+	if canonical(result).to_utf8_buffer().size() > 2048: return {}
+	result.mode = mode
+	result.maxStack = max_stack
+	return result
 
 static func page(raw: Dictionary, after: String, limit: int) -> Dictionary:
 	if not integer(raw.get("revision")) or not integer(raw.get("total")) or raw.total > TEMPLATE_SLOT_CAPACITY or not time(raw.get("serverTime")) or not raw.has("nextAfterKey"): return {}
