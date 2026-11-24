@@ -79,7 +79,7 @@ func _run() -> void:
 	assert(Pending.load_pending(path).pending == expired)
 	assert(Pending.confirm(path, expired)) # Test fixture cleanup only; a game retains/reconciles this guard.
 	var expanded: Dictionary = await horizon.items.getInventory(U)
-	assert(expanded.success and expanded.data.instances.size() == 201 and expanded.data.limits == {"catalog":6000,"inventory":250,"receipts":80})
+	assert(expanded.success and expanded.data.instances.size() == 201 and expanded.data.limits == {"catalog":6000,"inventory":250,"receipts":80,"stacks":0} and expanded.data.stacks.is_empty())
 	var lowered: Dictionary = await horizon.items.getInventory(U)
 	assert(lowered.success and lowered.data.instances.size() == 201 and lowered.data.limits.inventory == 10)
 	assert(horizon.items.getCurrentInventory().instances.size() == 201, "Lowered quota must not erase retained instances")

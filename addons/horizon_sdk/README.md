@@ -666,7 +666,8 @@ costs; the SDK does not multiply them through polling or automatic page loops.
 
 `Horizon.items` exposes `getInventory`, one-page `getCatalog`, `adjustProperties`,
 `setEquipped` and `discardItem`, with `{success,data,errorCode,error}` results and
-explicit original instance/revision arguments. Every inventory mutation sends once;
+explicit original instance/revision arguments. Stack templates add `stacks` to the
+inventory, `setStackEquipped` and `discardStack(user_id,item_key,revision,count=1)`. Every inventory mutation sends once;
 read and reconcile uncertainty explicitly. Player Values offers/receipts add
 `itemRewards`/`items` with backwards-compatible empty defaults. Persist purchase IDs
 before HTTP and fetch inventory explicitly after success. The executable
